@@ -1,0 +1,652 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+#--------------------------------------------------------------------
+#
+# Generic host procedures
+#
+#--------------------------------------------------------------------
+
+
+class host {
+    public variable name ""
+
+    #
+    # List of colors for graphing
+    #
+
+    # Assign colors for arlx208-213 in order of hotness
+    common colorlist {orange green red purple blue brown}
+    #common colorlist {maroon red orange yellow green blue navy purple brown}
+    common colorindex 0
+    common dashlist {{} {1 1}}
+    common dashindex 0
+    common symbollist {"" circle triangle cross}
+    common symbolindex 0
+
+    # Pick a color for graphing
+    public variable color "black"
+    public variable dash {}
+    public variable symbol ""
+
+    #
+    # Scope
+    #
+    public variable powerscope ""
+
+    public variable addr "none" {
+	if {$addr ne "none"} {
+	    if {$::options(gui)} {
+		set powerscope [::amescope::open_network $this]	
+	    }
+	}
+    }
+    #Port to connect to ametuil
+    public variable ameutilport 1412
+
+    #Network connection
+    protected variable sock 0
+    protected variable net_status "disconnected"
+    protected variable link "down"
+
+    protected variable msgq {}
+    #turn off net_health by default (set period to 0). Ameutil is going away in next release.
+    public variable net_health_period 0 {net_health}
+    protected variable net_health_after 0
+
+    protected method net_health {}
+    protected method net_open {}
+    protected method net_open_callback {}
+    protected method net_open_timeout {}
+    protected method net_close {}
+    protected method net_write_msg {}
+    protected method net_process_msg {}
+    protected method net_msg_timeout {tag}
+    public method net_send_msg {msg {tag {}} {callback {}} {priority 1} {timeout {10000}} {position end}}
+    protected method check_socket_status {}
+
+    protected method send {type cmd databytes {callback {}} {priority 1}} 
+    protected method send_sync {type cmd databytes {priority 1}}
+    protected method send_sync_callback {uid status databytes}
+
+    public method ipmicmd {addr netfn lun cmd args}
+    public method ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}}
+    public method ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""}}
+    public method ipmi_send {rssa chan lun netfn cmd data callbck {priority 1}}
+
+    public method poweroffhard {}
+    public method poweron {}
+    public method powercycle {}
+    public method poweroffsoft {}
+
+    #Sensors
+    protected variable data_ipmimsgcount {}
+    protected variable data_ipmimsglatency {}
+    protected variable data_ipmibytesrx {}
+    protected variable data_ipmibytestx {}
+    protected variable data_ipmimsgrate {}
+    protected variable data_ipmibwrx {}
+    protected variable data_ipmibwtx {}
+    protected variable data_ipmideqlatency {}
+    protected variable data_ipmiprocesslatency {}
+
+    protected method data_update {}
+    protected variable data_update_after 0
+    public variable data_update_period 10000
+    protected variable data_last_msgcount 0
+    protected variable data_last_bytesrx 0
+    protected variable data_last_bytestx 0
+
+    constructor {} {
+	::amesterdebug::debug host "host constructor $this"
+	regsub -all "::" $this "" name
+
+        # Assign next color
+        set color [lindex $colorlist $colorindex]
+	set symbol [lindex $symbollist $symbolindex]
+	set dash [lindex $dashlist $dashindex]
+        set colorindex [expr {($colorindex + 1) % [llength $colorlist]}]
+	if {$colorindex == 0} {
+	    set dashindex [expr {($dashindex + 1) % [llength $dashlist]}]
+	    if {$dashindex == 0} {
+		set symbolindex [expr {($symbolindex + 1) % [llength $symbollist]}]
+	    }
+	}
+
+	# Host-based sensors
+	if {[catch {set data_ipmimsgcount [data ::${name}_ipmimsgcount -u_value "\#" -title "IPMI Message Count"]} result]} {
+	    bgerror "can't make ipmimsgcount sensor for $this: $result"
+	}
+	if {[catch {set data_ipmimsgrate [data ::${name}_ipmimsgrate -u_value "Hz" -title "IPMI Message Rate"]} result]} {
+	    bgerror "can't make ipmimsgrate sensor for $this: $result"
+	}
+	if {[catch {set data_ipmimsglatency [data ::${name}_ipmimsglatency -u_value "ms" -title "IPMI Message Latency"]} result]} {
+	    bgerror "can't make ipmilatency sensor for $this: $result"
+	}
+	if {[catch {set data_ipmibytesrx [data ::${name}_ipmibytesrx -u_value "bytes" -title "Bytes Recieved"]} result]} {
+	    bgerror "can't make ipmibytesrx sensor for $this: $result"
+	}
+	if {[catch {set data_ipmibytestx [data ::${name}_ipmibytestx -u_value "bytes" -title "Bytes Transmitted"]} result]} {
+	    bgerror "can't make ipmibytestx sensor for $this: $result"
+	}
+	if {[catch {set data_ipmibwrx [data ::${name}_ipmibwrx -u_value "B/s" -title "Bytes/s Recieved"]} result]} {
+	    bgerror "can't make ipmibwrx sensor for $this: $result"
+	}
+	if {[catch {set data_ipmibwtx [data ::${name}_ipmibwtx -u_value "B/s" -title "Bytes/s Transmitted"]} result]} {
+	    bgerror "can't make ipmibwrx sensor for $this: $result"
+	}
+	if {[catch {set data_ipmideqlatency [data ::${name}_ipmideqlatency -u_value "ms" -title "Deque latency"]} result]} {
+	    bgerror "can't make ipmideqlatency sensor for $this: $result"
+	}
+	if {[catch {set data_ipmiprocesslatency [data ::${name}_ipmiprocesslatency -u_value "ms" -title "Process latency"]} result]} {
+	    bgerror "can't make ipmiprocesslatency sensor for $this: $result"
+	}
+	
+
+	# GUI
+	if {$::options(gui)} {
+	    # Function menu	    
+	    host_window_add $name menu [frame .host.c.f.${name}_menu -relief raised -bd 2]
+	    menubutton .host.c.f.${name}_menu.functions -text Functions -menu .host.c.f.${name}_menu.functions.m
+	    pack .host.c.f.${name}_menu.functions -side left
+	    menu .host.c.f.${name}_menu.functions.m
+
+	    # Power menu
+	    .host.c.f.${name}_menu.functions.m add cascade -label "power" -menu .host.c.f.${name}_menu.functions.m._power
+	    menu .host.c.f.${name}_menu.functions.m._power
+	    .host.c.f.${name}_menu.functions.m._power add command -label "turn on" -command [code $this poweron]
+	    .host.c.f.${name}_menu.functions.m._power add command -label "soft off" -command [code $this poweroffsoft]
+	    .host.c.f.${name}_menu.functions.m._power add command -label "hard off" -command [code $this poweroffhard]
+	    .host.c.f.${name}_menu.functions.m._power add command -label "power cycle" -command [code $this powercycle]
+
+	    host_window_add_host $name
+	    host_window_add $name status [label .host.c.f.${name}_status -textvariable [scope net_status] -anchor w -font $::fixedfont] status
+	    
+	    # Sensor menu
+	    .host.c.f.${name}_menu.functions.m add cascade -label "network sensors" -menu .host.c.f.${name}_menu.functions.m._sensors
+	    menu .host.c.f.${name}_menu.functions.m._sensors
+	    #.host.c.f.${name}_menu.functions.m._sensors add command -label "IPMI msg count" -command [code $data_ipmimsgcount make_graph]
+	    .host.c.f.${name}_menu.functions.m._sensors add command -label "IPMI msg latency" -command [code $data_ipmimsglatency make_graph]
+	    #.host.c.f.${name}_menu.functions.m._sensors add command -label "IPMI bytes received" -command [code $data_ipmibytesrx make_graph]
+	    #.host.c.f.${name}_menu.functions.m._sensors add command -label "IPMI bytes transmitted" -command [code $data_ipmibytestx make_graph]
+	    .host.c.f.${name}_menu.functions.m._sensors add command -label "IPMI msg rate" -command [code $data_ipmimsgrate make_graph]
+	    .host.c.f.${name}_menu.functions.m._sensors add command -label "IPMI bandwidth received" -command [code $data_ipmibwrx make_graph]
+	    .host.c.f.${name}_menu.functions.m._sensors add command -label "IPMI bandwidth transmitted" -command [code $data_ipmibwtx make_graph]
+	    .host.c.f.${name}_menu.functions.m._sensors add command -label "IPMI deque latency" -command [code $data_ipmideqlatency make_graph]
+	    .host.c.f.${name}_menu.functions.m._sensors add command -label "IPMI process latency" -command [code $data_ipmiprocesslatency make_graph]
+	}
+
+	# Start connection to ameutil
+	net_health
+
+	# Start data update
+	data_update
+    }
+
+    destructor {
+	::amesterdebug::debug host "$this destructor"
+	# Cancel any pending afters
+	after cancel $net_health_after
+	after cancel $data_update_after
+	if {$powerscope ne {}} {$powerscope delete}
+	if {$::options(gui)} {
+	    host_window_delete $name
+	}
+	delete object $data_ipmimsgcount
+	delete object $data_ipmimsgrate
+	delete object $data_ipmimsglatency
+	delete object $data_ipmibytesrx
+	delete object $data_ipmibytestx
+	delete object $data_ipmibwrx
+	delete object $data_ipmibwtx
+	delete object $data_ipmideqlatency
+	delete object $data_ipmiprocesslatency
+    }
+    
+}
+
+#--------------------------------------------------------------------
+#
+# Host network procedures
+# This connects to ameutil running in-band on host host
+#
+#--------------------------------------------------------------------
+
+#
+# Wakeup every $net_health_period and check the status of one host
+#
+# FIXME: check when last data packet came in.  If over threshold, ping the AME Client with a command...it will timeout if something is wrong.
+#
+# NOTE: same as bc::net_health
+body host::net_health {} {
+
+    ::amesterdebug::debug host "$this net_health"
+    after cancel $net_health_after
+
+    # reschedule
+    if {$net_health_period} {
+	set net_health_after [after $net_health_period [code $this net_health]]
+    } else {
+	return
+    }
+    
+    switch -- $net_status {
+	"disconnected" {
+	    net_open
+	}
+	"opening" {
+	    #::amesterdebug::debug hostnet "bcnet_health $name opening"
+	}
+	"connected" {
+	    if {[llength $msgq] > 0} {
+		net_write_msg
+	    }
+	}
+	"timeout" {
+	    # disconnect
+	    net_close
+	}
+	"error" {
+	    net_close
+	}
+	"closed" {
+	    # Try to re-open host
+	    net_open
+	}
+	default {
+	    ::amesterdebug::debug hostnet "Error: undefined status $net_status for $name"
+	}
+    }
+    
+}
+
+
+body host::net_open {} {
+    ::amesterdebug::debug hostnet "$this net_open"
+
+    # There may be no IP address associated with this host yet.
+    if {$addr eq "none"} {return}
+
+    set timeout_open_host 5000
+
+    set sock [socket -async $addr $ameutilport]
+    ::amesterdebug::debug hostnet "sock = $sock port=$ameutilport"
+    #Init all the socket's variables
+    set ::sockinfo($sock,name) $name
+    set ::sockinfo($sock,after_timeout) 0
+
+    #init sock
+    set net_status "opening"
+    ::amesterdebug::debug hostnet "$this opening"
+    fconfigure $sock -buffering line -blocking no
+    set ::sockinfo($sock,after_timeout) [after $timeout_open_host [code $this net_open_timeout]]
+    ::amesterdebug::debug hostnet "after set $::sockinfo($sock,after_timeout) for net_open_timeout"
+    fileevent $sock r [code $this net_open_callback]
+
+    ::amesterdebug::debug hostnet "Open socket $sock for $name"
+
+    return $sock
+}
+
+body host::net_open_timeout {} {
+    ::amesterdebug::debug hostnet "net_open_timeout $name"
+    set net_status "timeout"
+}
+
+body host::net_open_callback {} {
+    ::amesterdebug::debug hostnet "$this net_open_callback"
+    after cancel $::sockinfo($sock,after_timeout)
+
+    if {[fconfigure $sock -error] ne ""} {
+	::amesterdebug::debug hostnet "there was an error opening $sock"
+	net_close
+	return
+    }
+    if {[eof $sock]} {
+	net_close
+	return
+    }
+
+    set net_status "connected"
+    set link "up"
+    fileevent $sock w {}
+    fileevent $sock r [code $this net_process_msg]
+
+    # if there are pending messages, start sending them.
+    if {[llength $msgq]} {
+	net_write_msg
+    }
+    return 0
+}
+
+body host::check_socket_status {} {
+    # need the catch because sock may no longer exist if ameclient closes it
+    set code [catch {eof $sock} theeof]
+    set code2 [catch {fconfigure $sock -error} err]
+    if {$code ne 0 || $theeof ne 0 || $err ne ""} {
+	set net_status "error"
+    }
+}
+
+body host::net_close {} {
+    ::amesterdebug::debug hostnet "$this net_close"
+    #Attempt to close. May already be closed, so catch result.
+    set code [catch {close $sock}]
+    set net_status "closed"
+    set link "down"
+
+    if {$sock == 0} {return}
+
+    #Delete timers
+    after cancel $::sockinfo($sock,after_timeout)
+    foreach timer [array names ::sockcallback $sock,*,after] {
+	after cancel $::sockcallback($timer)
+    }
+
+    # remove storage for this sock and repost all callback messages
+    #
+    # NOTE: this is borrowed from BC. Blades normally don't repost. And leave all message in callback alone.  This is assuming that disconnection occurs during a long running benchmark, for example.
+    foreach index [array names ::netsockcallback $sock,*,tag] {
+	set tag $::netsockcallback($index)
+	#Get message that failed
+	set msg $::netsockcallback($sock,$tag,msg)
+	set callback $::netsockcallback($sock,$tag,callback)
+	set timeout $::netsockcallback($sock,$tag,timeout)
+	set priority $::netsockcallback($sock,$tag,priority)
+	#Clear netsockcallback
+	::amesterdebug::debug hostnet "$this net_close clear netsockcallback $sock,$tag"
+	array unset ::netsockcallback "$sock,$tag,*"
+	#Sending message will also reopen the connection
+	net_send_msg $msg $tag $callback $priority $timeout 0
+    }
+
+    #Delete socket stats.
+    array unset ::sockinfo $sock,*
+    set sock 0
+}
+
+body host::net_msg_timeout {tag} {
+    ::amesterdebug::debug hostnet "$this net_msg_timeout"
+    # For debugging
+    if {$sock != 0} {
+	set name $::sockinfo($sock,name)
+	set msg $::sockcallback($sock,$tag,msg)
+	set callback $::sockcallback($sock,$tag,callback)
+	set priority $::sockcallback($sock,$tag,priority)
+	set after $::sockcallback($sock,$tag,after)    
+	::amesterdebug::debug hostnet "ERROR timeout $after sending message $msg to $name"
+    }
+
+    net_close
+    return    
+}
+
+
+# Get next message on queue and actually send it to the host
+# Set timeout for it
+body host::net_write_msg {} {
+    ::amesterdebug::debug hostnet "$this net_write_msg"
+    if {!$::network} {
+	::amesterdebug::debug hostnet "net_write_msg: no network"
+	return
+    }
+    if {![llength $msgq]} {
+	::amesterdebug::debug hostnet "net_write_msg: nothing in msgq"
+	return
+    }    
+    if {$net_status ne "connected"} {
+	::amesterdebug::debug hostnet "net_write_msg: not connected ($net_status)"
+	return
+    }
+
+    # sort message queue by priority
+    # note: messages of the same priority remain in the same order.
+    #   Therefore, inserting into the front or end of the msgq will add the
+    #   message at the beginning or end of messages with the same priority.
+    # 
+    set msgq [lsort -integer -index 0 $msgq]
+
+    set item [lindex $msgq 0]
+    set priority [lindex $item 0]
+    set tag [lindex $item 1]
+    set callback [lindex $item 2]
+    set timeout [lindex $item 3]
+    set msg [lindex $item 4]
+
+#    set item [lindex $msgq 0]
+#    set tag [lindex $item 0]
+#    set callback [lindex $item 1]
+#    set keep [lindex $item 2]
+#    set timeout [lindex $item 3]
+#    set msg [lindex $item 4]
+
+    if {[info exists ::sockcallback($sock,$tag,msg)]} {
+	#There is already a message with the same tag.
+	#Must wait until it finishes before posting this message
+	#(Will try again when current message finishes)
+	::amesterdebug::debug hostnet "Message on sock=$sock pending with same tag=$tag"
+	::amesterdebug::debug hostnet "  message = $msg"
+	return
+    }
+
+    ::amesterdebug::debug hostnet "net_write_msg: tag=$tag callback=$callback priority=$priority timeout=$timeout msg=$msg"
+    set ::sockcallback($sock,$tag,tag) $tag
+    set ::sockcallback($sock,$tag,msg) $msg
+    set ::sockcallback($sock,$tag,callback) $callback
+    set ::sockcallback($sock,$tag,timeout) $timeout
+    set ::sockcallback($sock,$tag,priority) $priority
+
+    #remove from outgoing message queue
+    set msgq [lreplace $msgq 0 0]
+    #::amesterdebug::debug hostnet "sending $::sockinfo($sock,name): $msg"
+    
+    if {[eof $sock] || [catch {puts $sock [list $tag $msg]} result]} {
+	net_close
+	::amesterdebug::debug hostnet "$this we closed $name while in net_write_msg (msg=$msg) result=$result"
+    } else {
+	#::amesterdebug::debug "$this sent $msg"
+	if {$timeout != 0} {
+	    set ::sockcallback($sock,$tag,after) [after $timeout [code $this net_msg_timeout $tag]]
+	    ::amesterdebug::debug hostnet "after set $::sockcallback($sock,$tag,after) for net_msg_timeout"
+	}
+    }
+}
+
+
+set ::priority_highest 0
+set ::priority_default 1
+set ::priority_cmd 2
+set ::priority_data 3
+
+set tagid 0
+#
+# parameters must be lists. except name
+#   default timeout: 10 seconds
+#
+body host::net_send_msg {msg {tag {}} {callback {}} {priority 1} {timeout {10000}} {position end}} {
+    global tagid
+    ::amesterdebug::debug hostsendmsg "$this net_send_msg"
+    ::amesterdebug::debug hostsendmsg " name=$name"
+    ::amesterdebug::debug hostsendmsg " msg=$msg"
+    ::amesterdebug::debug hostsendmsg " tag=$tag"
+    ::amesterdebug::debug hostsendmsg " callback=$callback"
+    ::amesterdebug::debug hostsendmsg " priority=$priority"
+    ::amesterdebug::debug hostsendmsg " timeout=$timeout"
+
+    if {!$::network} {return}
+
+    if {$tag eq {}} {
+	::amesterdebug::debug hostnet "tag is nothing"
+	set tag "tag${tagid}"
+	incr tagid
+    }
+
+    set item [list $priority $tag $callback $timeout $msg]
+    set msgq [linsert $msgq $position $item ]
+
+    if {[llength $msgq] == 1} {
+	net_write_msg
+    }
+    ::amesterdebug::debug hostnet "$this msgq has [llength $msgq] items"
+}
+
+#
+# This procedure is called when a server sends a message to amester
+# 
+# The message is a list:
+# 1st word: the name of the command to which it is responding
+# remaining words: the response
+#
+body host::net_process_msg {} {
+    if {$::pause} {return}
+
+    ::amesterdebug::debug hostnet "$this net_process_msg"
+
+    if {[fconfigure $sock -error] ne ""} {
+	::amesterdebug::debug hostnet "there was an error reading $sock"
+	net_close
+	return
+    }
+
+    if {[eof $sock] || [catch {gets $sock line}]} {
+	::amesterdebug::debug hostnet "host closed $name"
+	net_close
+	return
+    } 
+
+    if {!$::network} {return}
+
+    ::amesterdebug::debug hostnet "msg from $name: $line"
+    
+    set tag [lindex $line 0]
+    set reply [lindex $line 1]
+    ::amesterdebug::debug hostnet "net_process_msg: tag=$tag reply=$reply"
+
+    if {[string match "\#" $tag]} {
+	#comment message
+	::amesterdebug::debug hostnet "$name: $reply"
+    } elseif {![info exists ::sockcallback($sock,$tag,callback)]} {
+	# Error: received reply without a message
+	::amesterdebug::debug 1 "ERROR: No message for this ameutil reply sock=$sock name=$name reply=$reply tag=$tag line=$line"
+	return
+    } else {
+    
+	set msg $::sockcallback($sock,$tag,msg)
+	set callback $::sockcallback($sock,$tag,callback)
+	set timeout $::sockcallback($sock,$tag,timeout)
+
+	if {[info exists ::sockcallback($sock,$tag,after)]} {
+	    set after $::sockcallback($sock,$tag,after)
+	    after cancel $after
+	    ::amesterdebug::debug hostnet "cancel $after"
+	}
+
+	# NOTE: callback may use variables: name, reply, tag, keep,
+	# after as parameters that will be filled in by the eval
+	# command.  #
+
+	::amesterdebug::debug hostnet "evaluating callback=$callback"
+	if {[catch [list eval $callback] _result]} {
+	    ::amesterdebug::debug 1 "ERROR while executing callback= $callback\n  result = $_result"
+	}
+	::amesterdebug::debug hostnet "$this process_msg clear netsockcallback $sock,$tag"
+	array unset ::netsockcallback "$sock,$tag,*"
+    }
+
+    # Send next message, if there is one
+    net_write_msg
+}
+
+
+# Assume that cmd is a bunch of hexidecimal bytes
+# e.g. ipmicmd myblade 20 6 0 1
+#
+#
+body host::ipmicmd {addr netfn lun cmd args} {
+    if {[string length $addr] != 2 ||
+	[string length $netfn] != 2 ||
+	[string length $lun] != 2 ||
+	[string length $cmd] != 2} {
+	return -code error "Each parameter must have an even number of hexadecimal digits"
+    }
+    
+    set chan 00
+    set data {}
+    foreach p $args {
+	if {[expr [string length $p] % 2] != 0} {
+	    return -code error "Each parameter must have an even number of hexadecimal digits: $p"
+	}
+	scan $p "%x" byte
+	set data [binary format "a*c" $data $byte]
+    }
+    set results [ipmi_send_sync $addr $chan $lun $netfn $cmd $data]
+    # Print the IPMI command completion code
+    puts -nonewline [format "%02x" [expr 0x0ff & [lindex $results 0]]]
+    # Print the IPMI return data
+    binary scan [lindex $results 1] "H*" bytes
+    puts $bytes
+}
+
+body host::ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}} {
+    return -code error "ipmi_send_sync not implemented on host $this"
+}
+body host::ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""}} {
+    return -code error "ipmi_send_sync not implemented on host $this"
+}
+body host::ipmi_send {rssa chan lun netfn cmd data callbck {priority 1}} {
+    return -code error "ipmi_send not implemented on host $this"
+}
+
+
+body host::poweroffhard {} {
+    set results [ipmi_send_sync 20 00 00 00 02 [binary format "H*" 00]]
+    set rc [lindex $results 0]
+    if {$rc} {puts "Error during hard power off"}
+    return $rc
+}
+body host::poweron {} {
+    set results [ipmi_send_sync 20 00 00 00 02 [binary format "H*" 01]]
+    set rc [lindex $results 0]
+    if {$rc} {puts "Error during power on"}
+    return $rc
+}
+body host::powercycle {} {
+    set results [ipmi_send_sync 20 00 00 00 02 [binary format "H*" 02]]
+    set rc [lindex $results 0]
+    if {$rc} {puts "Error during power cycle"}
+    return $rc
+}
+body host::poweroffsoft {} {
+    set results [ipmi_send_sync 20 00 00 00 02 [binary format "H*" 05]]
+    set rc [lindex $results 0]
+    if {$rc} {puts "Error during soft power off"}
+    return $rc
+}
+
+
+body host::data_update {} {
+    ::amesterdebug::debug host "$this data_update"
+    after cancel $data_update_after
+
+    # reschedule
+    if {$data_update_period} {
+	set data_update_after [after $data_update_period [code $this data_update]]
+    } else {
+	return
+    }
+
+    # multiple by 1000 to convert 1/milliseconds to 1/seconds
+    set now [$data_ipmimsgcount cget -value_acc]
+    $data_ipmimsgrate add_data [expr 1000*($now - $data_last_msgcount)/double($data_update_period)]
+    set data_last_msgcount $now
+
+    set now [$data_ipmibytesrx cget -value_acc]
+    $data_ipmibwrx add_data [expr 1000*($now - $data_last_bytesrx)/double($data_update_period)]
+    set data_last_bytesrx $now
+
+    set now [$data_ipmibytestx cget -value_acc]
+    $data_ipmibwtx add_data [expr 1000*($now - $data_last_bytestx)/double($data_update_period)]
+    set data_last_bytestx $now
+    
+}

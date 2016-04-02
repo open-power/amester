@@ -1,0 +1,1201 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+class ame_2_27 {
+    inherit ame
+
+    public variable name ""
+    public variable node ""   
+
+    #GUI
+    # Hook for extension to add a menu
+    public variable gui_function_menu {}
+    # Internal routines
+    protected method make_gui_preinit {}
+    protected method make_gui_postinit {}
+    protected common sensor_stats_anchor
+    set sensor_stats_anchor(addr) w
+    set sensor_stats_anchor(port) w
+    set sensor_stats_anchor(status) w
+    set sensor_stats_anchor(link) w
+    set sensor_stats_anchor(name) w
+    set sensor_stats_anchor(sensorname) w
+
+    #Set stats and stats_all the same
+    protected variable sensor_window_stats_all {graph sensorname value max min}
+    protected variable sensor_window_stats {graph sensorname value max min}
+    protected variable sensor_window_elements
+    protected variable sensor_window_titles
+    protected variable sensor_window_after 0
+
+    public method sensor_window_add {key {title none}}
+    public method sensor_window_delete {sensorobj}
+    public method sensor_window_update {}
+    public method sensor_window_update_do {}
+    public method updatescrollregion {{W {}} {w {}} {h {}}}
+
+    #list of sensor objects displayed
+    protected variable sensorobjs {}
+    #list of all sensor objects that exist on amec
+    protected variable sensorobjs_all {}
+    #mapping for sensors:  obj = sensornum2obj(sensornum)
+    protected variable sensornum2obj
+
+    protected variable numsensors 0
+    protected variable sensor_list {}
+    protected variable sensor_list_all {}
+    protected variable sensor_list_name {}
+    protected variable sensor_list_all_name {}
+    protected variable sensor_data_labels {}
+
+    protected variable amec_ver_major 0
+    protected variable amec_ver_minor 0
+    protected variable amec_ver_year 0
+    protected variable amec_ver_month 0
+    protected variable amec_ver_day 0
+
+    protected variable ame_ver_major 0
+    protected variable ame_ver_minor 0
+    protected variable ame_ver_year 0
+    protected variable ame_ver_month 0
+    protected variable ame_ver_day 0
+
+    protected variable version "unknown"
+    protected variable date "unknown"
+
+    protected variable ame_version "unknown"
+    protected variable ame_date "unknown"
+    protected variable api_version "unknown"
+    protected variable api_major "unknown"
+    protected variable api_minor "unknown"
+
+    public variable message_size "unknown"
+    public variable message_return_size "unknown"
+
+    protected method process_version {msg}
+
+    protected method gui_reconfig_var {method var}
+    protected method gui_reconfig_var2 {method arg1 var}
+    public method set_sensor_list_by_name {sensors}
+    public method set_sensor_list_by_object {sensors}
+    public method set_sensor_list {sensors}
+    public method set_sensor_list_num {r_num}
+    public method add_sensor_list_by_name {sensors}
+    public method add_sensor_list_by_object {sensors}
+    public method add_sensor_list {sensors}
+    public method add_sensor_list_num {r_num}
+    protected method sensornames_callback {}
+    public method sensornames {}
+    public method sensorstats {}
+    #public method reset {{callback {}}}
+    #public method reset_sync {}
+    #protected method reset_callback {status databytes {callback {}}}
+    public method clear_minmax_all_sync {}
+    public method make_sensor_window {}
+    protected method update_sensor_window {}
+    public method sensor_window_raise {}
+    protected method sensor_window_withdraw {}
+
+    public method sensor_update_by_name_sync {_sensornamelist}
+    public method sensor_update_by_object_sync {_sensorlist}
+
+    # Number of bytes per sensor
+    public variable sensor_watch_bytespersensor 24
+    # Hold requests for sensor updates
+    public variable sensor_watch_queue {}
+    # Number of sensors per message limit
+    public variable sensor_watch_limit 1
+    # Sensor watch generation. Used to ignore incoming sensor updates
+    # after the watched sensor list changes.
+    public variable sensor_watch_generation 0
+    # Sensor watch init
+    public method sensor_watch_init {}
+    # Request a sensor be updated
+    public method sensor_watch_enque {_sensorobjlist}
+    # Mark update is complete
+    public method sensor_watch_deque {sensorobjlist}
+    # Send command for sensor update
+    public method sensor_watch_cmd {}
+    # Process sensor updates
+    public method sensor_watch_callback {status bytes generation sensorobjlist}
+    # Start watching sensors
+    public method sensor_watch_start {}
+
+    protected method init {}
+    protected method find_message_size {}
+    protected method init_sensors {}
+    protected method init_version {}
+    protected method create_sensor {sensornum sensorname}
+    protected method version_callback {status databytes}
+    protected method api_callback {status databytes}
+    protected method numsensors_callback {status databytes}
+    protected method name_callback {sensornum status databytes}
+    protected method freq_callback {sensorname status databytes}
+    protected method units_callback {sensorname status databytes}
+    protected method scale_callback {sensorname status databytes}
+    protected method power_range_callback {status databytes}
+
+    public method get {what args}
+
+    # Trace buffer interface
+    public method trace_start {}
+    public method trace_stop {}
+
+    # Trace buffer (internals)
+    protected variable numtraces 0
+    protected method trace_init {trace_count}
+    #list of all trace objects that exist on amec
+    protected variable traceobjs_all {}
+    protected variable trace_list_all {}
+    protected variable trace_list_all_name {}
+
+    # Parameter interface
+    protected variable parm {}
+
+
+    constructor {parent args} {
+	::amesterdebug::debug ame "ame_2_27:: constructor for $this parent=$parent args=$args"
+	#init name to object name (can be overridden by arg)   
+	regsub -all "::" $this "" name
+	set host $parent
+	eval configure $args 
+   
+	set hostname [$host cget -name]
+	set gui_function_menu .host.c.f.${hostname}_menu.functions.m.${name}    
+
+	if {$::options(gui)} {make_gui_preinit}
+	init
+	if {$::options(gui)} {make_gui_postinit}
+    }
+
+    destructor {
+	::amesterdebug::debug destructor "$this destructor"
+	#::amesterdebug::debug destructor "deleting $sensorobjs_all"
+	#foreach s $sensorobjs_all {
+	#    delete object $s
+	#}
+	set a [time {eval delete object $sensorobjs_all}]
+	::amesterdebug::debug destructor "Time to delete sensors = $a"
+	if {$::options(gui)} {
+	    set hostname [$host cget -name]
+	    destroy .host.c.f.${hostname}_menu.functions.m
+
+	    foreach item [array names sensor_window_titles *] {
+		destroy $sensor_window_titles($item)
+	    }
+
+	    destroy .${name}_sensorwin.bbar.selsens
+	    destroy .${name}_sensorwin.bbar.selcols
+	    destroy .${name}_sensorwin.bbar
+	    destroy .${name}_sensorwin.c.s.sep
+	    destroy .${name}_sensorwin.c.s
+	    destroy .${name}_sensorwin.c
+	    destroy .${name}_sensorwin.yscroll
+	    destroy .${name}_sensorwin.xscroll
+	    destroy .${name}_sensorwin 
+	}
+    }
+
+}
+
+body ame_2_27::make_gui_preinit {} {
+    set hostname [$host cget -name]
+    .host.c.f.${hostname}_menu.functions.m._node${node} add cascade -label "$name ..." -menu $gui_function_menu  
+    menu $gui_function_menu
+
+    #Make container for sensors, but don't show it yet.
+    #Required so sensor has a place to put labels it owns.
+    make_sensor_window
+}
+
+body ame_2_27::make_gui_postinit {} {
+    set hostname [$host cget -name]
+
+    #Only 1 AME component is responsible for making the GUI elements
+    #that correspond with the host-level.  If another AME tries to make
+    #the same element, then fail silently and return.
+    catch {
+	
+	set host_label_list [list {version} {date}]
+	
+	foreach {key}  $host_label_list  {
+	    if {![info exists ::host_stats_anchor($key)]} {
+		set anchor e
+	    } else {
+		set anchor $::host_stats_anchor($key)
+	    }
+	    host_window_add $hostname $key [label .host.c.f.${hostname}_${key} -textvariable [scope $key] -anchor $anchor -font $::fixedfont] $key
+	}
+	
+	host_window_add $hostname ame_version [label .host.c.f.${hostname}_ame_version -textvariable [scope ame_version] -anchor w -font $::fixedfont] {ame version}
+	host_window_add $hostname ame_date [label .host.c.f.${hostname}_ame_date -textvariable [scope ame_date] -anchor w -font $::fixedfont] {ame date}
+	host_window_add $hostname api_version [label .host.c.f.${hostname}_api_version -textvariable [scope api_version] -anchor w -font $::fixedfont] {api version}
+    }
+
+    $gui_function_menu add command -label "Sensors..." -command [code $this sensor_window_raise]
+
+}
+
+body ame_2_27::sensor_window_add {key {title none}} {
+    ::amesterdebug::debug gui "sensor_window_add key=$key title=$title"
+    if {[lsearch -exact $sensor_window_stats_all $key] == -1} {
+	lappend sensor_window_stats_all $key
+    }
+    if {$title ne "none"} {
+	if {![info exists sensor_window_titles($key)]} {
+	    if {![info exists sensor_stats_anchor($key)]} {
+		set anchor e
+	    } else {
+		set anchor $sensor_stats_anchor($key)
+	    }
+	    set sensor_window_titles($key) [label .${name}_sensorwin.c.s.title_${key}  -text $title -anchor $anchor -font $::fixedfont]
+	}
+    }
+}
+
+body ame_2_27::sensor_window_delete {sensorobj} {
+    #::amesterdebug::debug gui "sensor_window_delete $sensorobj"
+    #remove from display
+    foreach item [array names sensor_window_elements $sensorobj,*] {
+	destroy $sensor_window_elements($item)
+    }
+    #forget elements
+    array unset sensor_window_elements "$sensorobj,*"
+}
+
+body ame_2_27::sensor_window_update {} {
+    after cancel $sensor_window_after
+    set sensor_window_after [after 500 [code $this sensor_window_update_do] ]
+    return
+}
+
+body ame_2_27::sensor_window_update_do {} {
+    ::amesterdebug::debug gui "sensor_window_update"
+    if {!$::options(gui)} {return}
+
+    set f .${name}_sensorwin
+    if {![winfo exists $f]} {
+	return
+    }
+
+    #child is the last element put in the grid. Need to sync window update.
+    set child ""
+
+    #variables for specifying the grid
+    set row 0
+    set col 0
+
+    # unpack things in .host
+    foreach t [grid slaves .${name}_sensorwin.c.s] {
+	grid remove $t
+    }
+
+    # Pack column titles
+    set row 0
+    set col 0
+
+    foreach t $sensor_window_stats  {
+	if {[info exists sensor_window_titles($t)]} {
+	    if {[winfo exists $sensor_window_titles($t)]} {
+		grid $sensor_window_titles($t) -row $row -column $col -ipadx 10 -sticky news
+		set child $sensor_window_titles($t)
+	    }
+	}
+	incr col
+    }
+    incr row
+
+    #Draw separator line, but only if there are statistics to display
+    set l [llength $sensor_window_stats]
+    if {$l > 0} {
+	grid .${name}_sensorwin.c.s.sep -row $row -column 0 -columnspan $l -sticky news
+    }
+    
+    # Add all sensors being watched
+    incr row
+    ::amesterdebug::debug gui "  sensorobjs is $sensorobjs"
+    foreach {s} $sensorobjs {
+	set col 0
+	foreach {t}  $sensor_window_stats  {
+	    if {![info exists sensor_window_elements($s,$t)]
+		|| ![winfo exists $sensor_window_elements($s,$t)]} {
+		#make the element
+		set sensor_window_elements($s,$t) [$s getgui $t ${f}.c.s]
+		}
+	    grid $sensor_window_elements($s,$t) -row $row -column $col -ipadx 10 -sticky news
+	    set child $sensor_window_elements($s,$t)
+	    incr col
+        }
+	incr row
+    }
+
+    #Make grid stretchable
+    set size [grid size .${name}_sensorwin.c.s]
+    set rm [lindex $size 1]
+    set cm [lindex $size 0]
+    for {set row 0} {$row < $rm} {incr row} {
+	grid rowconfigure .${name}_sensorwin.c.s $row -weight 1
+    }
+    for {set col 0} {$col < [expr {$cm - 1}]} {incr col} {
+	grid columnconfigure .${name}_sensorwin.c.s $col -weight 1
+    }
+
+    if {[wm state $f] eq "normal" && $child ne ""} {
+	#puts "child is $child"
+	tkwait visibility $child
+    } else {
+	#puts "no child"
+    }
+
+    set bbox [grid bbox .${name}_sensorwin.c.s 1 2]
+    set inc [lindex $bbox 3]
+    set incw [lindex $bbox 2]
+    set width [winfo reqwidth .${name}_sensorwin.c.s]
+    set height [winfo reqheight .${name}_sensorwin.c.s]
+
+    .${name}_sensorwin.c config -scrollregion "0 0 $width $height"
+    .${name}_sensorwin.c config -yscrollincrement $inc
+    .${name}_sensorwin.c config -xscrollincrement $incw
+
+    update idletasks
+
+    #puts "--> $width $height $inc $incw"
+    return
+}
+
+
+
+#
+# Helper function to call a method with the new variable value set by the GUI
+#
+# This gives us the updated var after the user has modified the GUI. 
+#
+body ame_2_27::gui_reconfig_var {method var} {
+    $method [set $var]
+}
+body ame_2_27::gui_reconfig_var2 {method arg1 var} {
+    $method $arg1 [set $var]
+}
+
+#--------------------------------------------------------------------
+#
+# Sensor GUI
+#
+#--------------------------------------------------------------------
+
+#
+# Take the requested sensor objects and put them in the sensor GUI
+#
+body ame_2_27::set_sensor_list_by_object {sensors} {
+    foreach s $sensors {
+	lappend _sensornums [$s cget -sensornum]
+    }
+    set_sensor_list_num $_sensornums
+    return
+}
+
+
+#
+# Converts a list of sensor names to numbers and
+# then calls set_sensor_list_num with them
+#
+body ame_2_27::set_sensor_list_by_name {sensors} {
+    set_sensor_list $sensors
+    return
+}
+
+body ame_2_27::set_sensor_list {sensors} {
+    ::amesterdebug::debug gui "set_sensor_list $name $sensors"
+    # Convert list of sensor names to list of sensor numbers
+    set r_num {}
+    foreach sensorname $sensors {
+	set sensorobj [find object ${this}_${sensorname}] 
+	if {$sensorobj ne ""} {
+	    set n [$sensorobj cget -sensornum]
+	    if {[lsearch -exact $r_num $n] == -1} {
+		lappend r_num $n
+	    }
+	} else {
+	    ::amesterdebug::debug gui "set_sensor_list: sensor $sensorname does not exist"
+	    puts stderr "ERROR set_sensor_list: sensor $sensorname does not exist"
+	    return
+	}
+    }
+
+    set_sensor_list_num $r_num
+    return
+}
+
+#
+# This routine takes the requested sensors, updates key
+# data that track the sensors to be watched in GUI, 
+# and starts the data collection.
+#
+# This routine is infrequently called. Code for clarity.
+#
+body ame_2_27::set_sensor_list_num {r_num} {
+    ::amesterdebug::debug gui "$this set_sensor_list_num $r_num"
+
+    # Setup key data structures
+    set sensor_list $r_num
+    set sensor_list_name {}
+    set sensorobjs {}
+    # Mark that new sensor list. Ignore incoming updates for previous sensors.
+    incr sensor_watch_generation
+
+    # Add to name list of active sensors
+    foreach sensornum $r_num {
+	set sensorobj $sensornum2obj($sensornum)
+	lappend sensorobjs $sensorobj
+	lappend sensor_list_name [$sensorobj cget -sensorname]
+    }
+
+    # Update GUI to reflect added or deleted sensors
+    sensor_window_update
+
+    # Re-start monitoring
+    sensor_watch_start
+
+    return
+}
+
+#
+# Take the requested sensor objects and put them in the sensor GUI
+#
+body ame_2_27::add_sensor_list_by_object {sensors} {
+    foreach s $sensors {
+	lappend _sensornums [$s cget -sensornum]
+    }
+    add_sensor_list_num $_sensornums
+    return
+}
+
+
+#
+# Converts a list of sensor names to numbers and
+# then calls set_sensor_list_num with them
+#
+body ame_2_27::add_sensor_list_by_name {sensors} {
+    add_sensor_list $sensors
+    return
+}
+
+body ame_2_27::add_sensor_list {sensors} {
+    ::amesterdebug::debug gui "set_sensor_list $name $sensors"
+    # Convert list of sensor names to list of sensor numbers
+    set r_num {}
+    foreach sensorname $sensors {
+	set sensorobj [find object ${this}_${sensorname}] 
+	if {$sensorobj ne ""} {
+	    set n [$sensorobj cget -sensornum]
+	    if {[lsearch -exact $r_num $n] == -1} {
+		lappend r_num $n
+	    }
+	} else {
+	    ::amesterdebug::debug gui "set_sensor_list: sensor $sensorname does not exist"
+	    puts stderr "ERROR set_sensor_list: sensor $sensorname does not exist"
+	    return
+	}
+    }
+
+    add_sensor_list_num $r_num
+    return
+}
+
+#
+# This routine takes the requested sensors, updates key
+# data that track the sensors to be watched in GUI, 
+# and starts the data collection.
+#
+# This routine is infrequently called. Code for clarity.
+#
+body ame_2_27::add_sensor_list_num {r_num} {
+    ::amesterdebug::debug gui "$this set_sensor_list_num $r_num"
+
+    # Setup key data structures
+    set sensor_list $r_num
+    # Mark that new sensor list. Ignore incoming updates for previous sensors.
+    incr sensor_watch_generation
+
+    # Add to name list of active sensors
+    foreach sensornum $r_num {
+	set sensorobj $sensornum2obj($sensornum)
+	if {[lsearch -exact $sensorobjs $sensorobj] == -1} {
+	    #Not in list, so add
+	    lappend sensorobjs $sensorobj
+	    lappend sensor_list_name [$sensorobj cget -sensorname]
+	}
+    }
+
+    # Update GUI to reflect added or deleted sensors
+    sensor_window_update
+
+    # Re-start monitoring
+    sensor_watch_start
+
+    return
+}
+
+# May be called at any time to restart sensor monitoring.
+body ame_2_27::sensor_watch_start {} {
+    # Clear any previously enqued sensors waiting to update
+    set sensor_watch_queue {}
+    # Enque for monitoring
+    sensor_watch_enque $sensorobjs
+    # After all sensors are enqued, start command to get the data
+    sensor_watch_cmd
+}
+
+body ame_2_27::sensornames_callback {} {
+    set_sensor_list_by_name $sensor_list_name
+    return
+}
+
+body ame_2_27::sensornames {} {
+    multiselect \#auto [scope sensor_list_all_name] [scope sensor_list_name] [code $this sensornames_callback]
+}
+
+body ame_2_27::sensorstats {} {
+    multiselect \#auto [scope sensor_window_stats_all] [scope sensor_window_stats] [code $this sensor_window_update]
+}
+
+# Clear min/max of all sensors
+body ame_2_27::clear_minmax_all_sync {} {
+    set result [send_sync 3a 3c [binary format "H*" 21]]
+}
+
+
+#
+# Sensor window showing sensors for an AME component
+#
+
+body ame_2_27::sensor_window_raise {} {
+    # window
+    ::amesterdebug::debug gui "sensor_window_raise"
+    set f .${name}_sensorwin
+    if {[winfo exists $f]} {
+	::amesterdebug::debug gui "$f exists, so raise it."
+	wm deiconify $f
+	#wm state .${name}_sensorwin normal
+	focus $f
+	raise $f
+	wm deiconify $f
+    } else {
+	::amesterdebug::debug gui "$f doesn't exist, so make it, then raise it."
+	make_sensor_window
+	focus $f
+	raise $f
+	wm deiconify $f
+    }
+}
+
+body ame_2_27::sensor_window_withdraw {} {
+    ::amesterdebug::debug gui "sensor_window_withdraw"
+    set f .${name}_sensorwin
+    if {[winfo exists $f]} {
+	wm withdraw $f
+    }
+}
+
+# A window that displays sensors for 1 host
+body ame_2_27::make_sensor_window {} {
+    ::amesterdebug::debug gui "make_sensor_window $name"
+    global valuelabelwidth
+
+    # window
+    set f .${name}_sensorwin
+
+    if {[winfo exists $f]} {
+	focus $f
+	raise $f
+	wm deiconify $f
+    } else {
+	toplevel $f
+	wm withdraw $f
+	wm protocol $f WM_DELETE_WINDOW [code $this sensor_window_withdraw]
+
+	#
+	# Button bar
+	#
+	frame $f.bbar -relief raised -bd 2
+	button $f.bbar.clear -text "Clear min/max" -command [code $this clear_minmax_all_sync]
+	button $f.bbar.selsens -text "Select sensors" -command [code $this sensornames]
+	#select_sensors
+	button $f.bbar.selcols -text "Select columns" -command [code $this sensorstats]
+
+	pack $f.bbar.clear $f.bbar.selsens $f.bbar.selcols -side left
+	
+	# frame for sensor data
+	canvas $f.c -yscrollcommand [list $f.yscroll set] -xscrollcommand [list $f.xscroll set]
+	frame $f.c.s
+	scrollbar $f.yscroll -orient vertical -command [list $f.c yview]
+	scrollbar $f.xscroll -orient horizontal -command [list $f.c xview]
+	$f.c create window 0 0 -anchor nw -window $f.c.s
+
+	frame $f.c.s.sep -bg black -height 2
+
+	wm title $f "$name"
+	wm resizable $f 1 1
+	pack $f.bbar -side top -fill x
+	pack $f.yscroll -side right -fill y
+	pack $f.xscroll -side bottom -fill x
+	pack $f.c -side left -fill both -expand true
+
+	#bind $f.xscroll <Enter> "$this updatescrollregion"
+	#bind $f.yscroll <Enter> "$this updatescrollregion"
+
+	#Detect any changes in the size of the gridded frame so that the
+	#canvas scrollbars can be updated and show the whole frame
+	bind $f.c.s <Configure> "$this updatescrollregion %W %w %h"
+
+	#bind $f.c <Configure> {puts "%W is now %w %h"}
+
+    }
+}
+
+body ame_2_27::updatescrollregion {{W {}} {w {}} {h {}}} {
+    #puts "$W is now $w $h"
+    .${name}_sensorwin.c config -scrollregion [list 0 0 [winfo reqwidth .${name}_sensorwin.c.s] [winfo reqheight .${name}_sensorwin.c.s]]
+    update idletasks
+}
+
+#
+# Given a list of sensor objects, update each one, then return.
+#
+body ame_2_27::sensor_update_by_object_sync {_sensorlist} {
+    while {[llength $_sensorlist]} {
+	set _list {}
+	set _list_obj [lrange $_sensorlist 0 [expr {$sensor_watch_limit - 1}]]
+	set _sensorlist [lreplace $_sensorlist 0 [expr {$sensor_watch_limit - 1}]]
+	foreach _s $_list_obj {
+	    lappend _list [$_s cget -sensornum]
+	}
+	set result [send_sync 3a 3c [binary format "H2S*" "07" $_list]]
+	set _status [lindex $result 0]
+	if {$_status == 0} {
+	    set _databytes [lindex $result 1]
+	    set _i 0
+	    foreach s $_list_obj {
+		binary scan $_databytes "@${_i}a${sensor_watch_bytespersensor}" _bytes
+		$s sensor_data_callback $_status $_bytes
+		incr _i $sensor_watch_bytespersensor
+	    }
+	} else {
+	    return -code error "$this sensor_update_by_object: firmware returned error $_status"
+	}
+    }
+    return
+    
+}
+
+#
+# Given a list of sensors, do 1 update on each one and return when done.
+#
+body ame_2_27::sensor_update_by_name_sync {_sensornamelist} {
+    set _objlist {}
+    foreach sn $_sensornamelist {
+	set obj [find object ${this}_${sn}]
+	lappend _objlist $obj
+    }
+    sensor_update_by_object_sync $_objlist
+    return
+}
+
+body ame_2_27::sensor_watch_init {} {
+    # Set limits on message size
+    # -1 for 0x07 command byte and /2 for 2 bytes per sensor requested
+    set _outlimit [expr {($message_size - 1) / 2}]
+    set _inlimit [expr {$message_return_size / $sensor_watch_bytespersensor}]
+    set sensor_watch_limit [expr {min($_outlimit,$_inlimit)}]
+}
+
+# Request sensors be updated in background. 
+# The input is a list of sensor number (to be used directly in IPMI cmd)
+body ame_2_27::sensor_watch_enque {_sensorobjlist} {
+    set sensor_watch_queue [concat $sensor_watch_queue $_sensorobjlist]
+    return
+}
+
+# Take sensors off queue waiting for update and ask firmware for update
+body ame_2_27::sensor_watch_cmd {} {
+    # Process sensors in batches according to limits of IPMI message size
+    #Only have 1 outstanding sensor command at a time to deal with error on callback, instead of gumming
+    # up the ipmi_msgq by shoving in N sensor update commands for every 1 command error.
+    #while {[llength $sensor_watch_queue]} 
+    if {[llength $sensor_watch_queue]} {
+	set _list {}
+	set _list_obj [lrange $sensor_watch_queue 0 [expr {$sensor_watch_limit - 1}]]
+	set sensor_watch_queue [lreplace $sensor_watch_queue 0 [expr {$sensor_watch_limit - 1}]]
+	foreach _s $_list_obj {
+	    lappend _list [$_s cget -sensornum]
+	}
+	set callback "[code $this sensor_watch_callback] \$status \$databytes $sensor_watch_generation {$_list_obj}"
+	send 3a 3c [binary format "H2S*" "07" $_list] $callback $::priority_data
+    }
+    return
+}
+
+#
+# Process the incoming message with sensor data for multiple sensors.
+#
+body ame_2_27::sensor_watch_callback {_status _databytes _generation _sensorlist} {
+    # Number of items we asked for
+    set _items [llength $_sensorlist]
+    # Number of bytes returned
+    set _l [string length $_databytes]
+    # Number of items returned
+    set _returned [expr {$_l / $sensor_watch_bytespersensor}]
+    
+    if {$_status} {
+	# There was an error
+	binary scan $_databytes "H*" data
+	::amesterdebug::debug ame "ERROR: $this sensor_watch_callback status=$_status data=$data"
+	# Attempt to restart monitoring
+	sensor_watch_start
+	return
+    } 
+    
+    
+    # Check for correct data size
+    if {[expr {$_items * $sensor_watch_bytespersensor}] != $_l} {
+	binary scan $_databytes "H*" data
+	::amesterdebug::debug 1 "ERROR: $this sensor_watch_callback Incorrect data length ($_l bytes) for $_items items in sensorlist=$_sensorlist status=$_status data=$data"
+	return
+    } 
+
+    # Discard this update if it is no longer watched. Important
+    # to avoid putting this sensor back on the watch queue.
+    if {$_generation != $sensor_watch_generation} {return}
+    
+    #::amesterdebug::debug sensorwatch "returned sensors = [llength $_returned_sensors]"
+    set _i 0
+    foreach s $_sensorlist {
+	#::amesterdebug::debug sensorwatch "$this: sensor_watch_callback process: $s"
+	binary scan $_databytes "@${_i}a${sensor_watch_bytespersensor}" _bytes
+	if {[catch [$s sensor_data_callback $_status $_bytes] result]} {
+	    ::amesterdebug::debug 1 "$this: failed to update sensor $s:  $result"
+	}
+	incr _i $sensor_watch_bytespersensor
+    }
+
+    #Start next round (OK to call if nothing to do)
+    sensor_watch_cmd
+    #This routine can take >50ms on a 3 GHz machine, so need to keep GUI working
+    update idletasks
+    return
+}
+
+
+body ame_2_27::init {} {
+    ::amesterdebug::debug ame "$this ::init"
+
+    init_version
+    if {[catch {set parm [parm_2_25 ::${name}_parm $this]} result]} {
+	bgerror "can't make parameter interface for $this: $result"
+	return
+    }
+    find_message_size
+
+    # Set limits on sensor watch message size
+    sensor_watch_init
+}
+
+body ame_2_27::find_message_size {} {
+    # Find return message size (not counting return code byte) by
+    # requesting a test message that fills the firmware output buffer
+    set result [send_sync_cache 3a 3c [binary format "H2" ff] $::priority_highest "$ame_version $api_version"]
+    #Strip out data for API version (2 bytes) and process
+    if {[lindex $result 0] == 0} {
+	set databytes [lindex $result 1]
+	set message_return_size [string length $databytes]
+        ::amesterdebug::debug ame "$this outsize = $message_return_size"
+    } else {
+	return
+    }
+
+    # Find send message size (everything after 3c byte) by sending
+    # back largest message possible and see how much is echoed back
+    #
+    # Note, we used to subtract 1 (for the FE command byte below).  Here we subtract 2
+    # because OpenPOWER has taken an additionaly byte to specify the OCC routing, but
+    # does not want to change the OCC code to update the buffer size limitations using ipmitool
+    # from command line.  This fixes OpenPOWER systems, but is a hack to put it here. 
+    set size [expr {$message_return_size - 2}]
+    while {$size > 0} {
+	set result [send_sync_cache 3a 3c [binary format "H2a${size}" fe $databytes] $::priority_highest "$ame_version $api_version"]
+	#Strip out data for API version (2 bytes) and process
+	if {[lindex $result 0] == 0} {
+	    set databytes [lindex $result 1]
+	    set message_size [string length $databytes]
+	    break
+	}
+        ::amesterdebug::debug ame "$this FAIL message_size=$size
+	#Try a smaller message size
+	incr size -1
+    }
+
+    ::amesterdebug::debug ame "$this insize = $message_size"
+
+}
+
+body ame_2_27::init_version {} {
+    #Get API Version
+    #Get Firmware Version
+    #Get number of AME sensors
+
+    set result [send_sync_cache 3a 3c [binary format "H2" 1c] $::priority_highest "$ame_version $api_version"]
+
+    #Strip out data for API version (2 bytes) and process
+    if {[lindex $result 0] == 0} {
+	set len [binary scan [lindex $result 1] "a2a6a2c" api_data version_data num_data num_tb]
+	if {$len == 4} {
+	    api_callback 0 $api_data
+	    version_callback 0 $version_data
+	    numsensors_callback 0 $num_data
+	    init_sensors
+	    trace_init $num_tb
+	} else {
+	    puts "There was an error reading version information from $this. Got $len fields out of 4."
+	    return
+	}
+    } else {
+	puts "There was an error reading version information from $this"
+	return
+    }
+}
+
+body ame_2_27::version_callback {status databytes} {
+    ::amesterdebug::debug ame "$this version_callback"
+    set n [binary scan $databytes "ccScc" ame_ver_major ame_ver_minor ame_ver_year ame_ver_month ame_ver_day]
+    set ame_version "${ame_ver_major}.${ame_ver_minor}"
+    set ame_date [format "%4u-%02u-%02u" $ame_ver_year $ame_ver_month $ame_ver_day]
+}
+
+body ame_2_27::api_callback {status databytes} {
+    ::amesterdebug::debug ame "$this api_callback"
+    set n [binary scan $databytes "cc" api_major api_minor]
+    set api_version "${api_major}.${api_minor}"
+}
+
+
+#
+# Read sensor configuration
+#
+
+body ame_2_27::init_sensors {} {
+    #NOTE: numsensors variable must be initialized before calling here
+    ::amesterdebug::debug ame "$this ::init_sensors"
+
+    for {set i 0} {$i < $numsensors} {} {
+
+	::amesterdebug::debug ame "  ask for sensor $i onward"
+
+	set result [send_sync_cache 3a 3c [binary format "H*Sc" 25 $i 5] $::priority_highest "$ame_version $api_version"]
+	if {[lindex $result 0] == 0} { 
+	    set j 0
+	    set databytes [lindex $result 1]
+	    set databytes_len [string length $databytes]
+	    
+	    ::amesterdebug::debug ame "  got $databytes_len bytes"
+	    
+	    while {$j < $databytes_len} {
+		
+		set name_start $j
+		
+		while {$j < $databytes_len} {
+		    binary scan $databytes "@${j}c" xx
+		    if {$xx == 0} {
+			break
+		    }
+		    incr j
+		}
+		set name_len [expr {$j - $name_start}]
+		#::amesterdebug::debug ame "sensor name is $name_len bytes"
+		binary scan $databytes "@${name_start}A${name_len}" sensorname
+		#Skip over null byte
+		incr j
+		
+		set unit_start $j
+		while {$j < $databytes_len} {
+		    binary scan $databytes "@${j}c" xx
+		    if {$xx == 0} {
+			break
+		    }
+		    incr j
+		}
+		set unit_len [expr {$j - $unit_start}]
+		binary scan $databytes "@${unit_start}a${unit_len}" data_unit
+		#Skip over null byte
+		incr j
+		binary scan $databytes "@${j}a4a4" data_freq data_scale
+		incr j 8
+		
+		#::amesterdebug::debug ame "$sensorname num=$i unit=$data_unit freq=$data_freq scalefactor=$data_scale"
+		
+		
+		set s [create_sensor $i $sensorname]
+		units_callback $s [lindex $result 0] $data_unit
+		freq_callback $s [lindex $result 0] $data_freq
+		scale_callback $s [lindex $result 0] $data_scale
+		
+		::amesterdebug::debug ame "$sensorname num=$i unit=[$s cget -u_value] freq=[$s cget -freq] scalefactor=[$s cget -scalefactor]"
+		incr i
+		
+	    }
+	} else {
+	    ::amesterdebug::debug 1 "$this: Error while reading sensor number $i (start sensor = $_start_sensor)"
+	    binary scan $result "H*" all
+	    ::amesterdebug::debug 1 "  databytes = $all"
+	    set i $numsensors
+	}
+    }
+    set sensor_list_all_name [lsort -ascii $sensor_list_all_name]
+
+}
+
+body ame_2_27::numsensors_callback {status databytes} {
+    ::amesterdebug::debug ame "$this numsensors_callback"
+    binary scan $databytes "S" n
+    set n [expr {$n & 0xffff}]
+    ::amesterdebug::debug ame "  found $n sensors"
+    set numsensors $n
+}
+
+
+body ame_2_27::create_sensor {sensornum sensorname} {
+    #translate illegal characters in name to legal characters
+    #that can be used in Tk window name, etc.
+    regsub -all "\\-" $sensorname "_" sensorname
+
+    if {[catch {set s [sensor_2_27 ::${name}_${sensorname} $this]} result]} {
+	bgerror "can't make $sensornum for $this: $result"
+	return
+    }
+    lappend sensorobjs_all $s
+    
+    # Add sensors to list
+    if {[lsearch -exact $sensor_list_all $sensornum] == -1} {
+	lappend sensor_list_all $sensornum
+    }
+    if {[lsearch -exact $sensor_list_all_name $sensorname] == -1} {
+	lappend sensor_list_all_name $sensorname
+    }
+    #By default: no sensors are monitored
+    set sensornum2obj($sensornum) $s
+    $s configure -sensorname $sensorname -sensornum $sensornum -hist 100 -avg 0
+    
+    return $s
+}
+
+# Parse sensor name
+body ame_2_27::name_callback {sensornum status databytes} {
+    ::amesterdebug::debug ame "$this name_callback $name $sensornum"
+    set n [binary scan $databytes "A*" sensorname]
+    set s [create_sensor $sensornum $sensorname]
+
+    # IMPORTANT: Put additional data collection below HERE.
+    #
+    #
+
+    #Get sensor freq
+    #set callback "[code $this freq_callback] $sensorname \$status \$databytes"
+    set result [send_sync 3a 3c [binary format "cSc" 3 $sensornum 1]]
+    freq_callback $s [lindex $result 0] [lindex $result 1]
+
+    #Get sensor units
+    #set callback "[code $this units_callback] $sensorname \$status \$databytes"
+    set result [send_sync 3a 3c [binary format "cSc" 3 $sensornum 2]]
+    units_callback $s [lindex $result 0] [lindex $result 1]
+
+    #Get sensor scale
+    #set callback "[code $this scale_callback] $sensorname \$status \$databytes"
+    set result [send_sync 3a 3c [binary format "cSc" 3 $sensornum 3]]
+    scale_callback $s [lindex $result 0] [lindex $result 1]
+    
+}
+
+# Parse sensor name
+body ame_2_27::freq_callback {sensorobj status databytes} {
+    set n [binary scan $databytes "cccc" m1 m2 m3 e]
+    set m1 [expr {$m1 & 0xff}]
+    set m2 [expr {$m2 & 0xff}]
+    set m3 [expr {$m3 & 0xff}]
+    set mant [expr {($m1 << 16) | ($m2 << 8) | $m3}]
+    set f [expr {$mant * pow(10,$e)}]
+    $sensorobj configure -freq $f
+    set period 1000
+    if {[catch {set period [expr {int(1.0 / ($f) * 1000)}]} result]} {
+	::amesterdebug::debug 1 "WARN: sensor $sensorobj has frequency=$f Hz. Using update period of 1 s"
+	#Bogus period
+	#Someone set period that is way too small in firmware
+    }
+    if {$period > 1000} {
+	$sensorobj configure -update_period $period
+    }
+
+}
+
+# Parse sensor name
+body ame_2_27::units_callback {sensorobj status databytes} {
+    set n [binary scan $databytes "A*" units]
+    $sensorobj configure -u_value $units
+}
+
+body ame_2_27::scale_callback {sensorobj status databytes} {
+    set n [binary scan $databytes "cccc" m1 m2 m3 e]
+    set m1 [expr {$m1 & 0x0ff}]
+    set m2 [expr {$m2 & 0x0ff}]
+    set m3 [expr {$m3 & 0x0ff}]
+    set mant [expr {($m1 << 16) | ($m2 << 8) | $m3}]
+    set f [expr {$mant * pow(10,$e)}]
+    $sensorobj configure -scalefactor $f
+}
+
+body ame_2_27::trace_init {trace_count} {
+    ::amesterdebug::debug trace "$this trace_init $trace_count"
+    set numtraces $trace_count
+    for {set i 0} {$i < $numtraces} {} {
+
+	::amesterdebug::debug trace "  ask for trace $i onward"
+
+	set result [send_sync_cache 3a 3c [binary format "H*c" 30 $i] $::priority_highest "$ame_version $api_version"]
+	if {[lindex $result 0] == 0} { 
+	    set j 0
+	    set databytes [lindex $result 1]
+	    set databytes_len [string length $databytes]
+	    
+	    ::amesterdebug::debug trace "  got $databytes_len bytes"
+	    
+	    while {$j < $databytes_len} {
+		
+		set name_start $j
+		
+		while {$j < $databytes_len} {
+		    binary scan $databytes "@${j}c" xx
+		    if {$xx == 0} {
+			break
+		    }
+		    incr j
+		}
+		set name_len [expr {$j - $name_start}]
+		::amesterdebug::debug trace "trace name is $name_len bytes"
+		binary scan $databytes "@${name_start}A${name_len}" tracename
+		#Skip over null byte
+		incr j
+		
+		binary scan $databytes "@${j}ccccc" m1 m2 m3 e has_scom
+		set m1 [expr {$m1 & 0xff}]
+		set m2 [expr {$m2 & 0xff}]
+		set m3 [expr {$m3 & 0xff}]
+		set mant [expr {($m1 << 16) | ($m2 << 8) | $m3}]
+		set f [expr {$mant * pow(10,$e)}]
+		incr j 5
+		
+		::amesterdebug::debug trace "$tracename num=$i freq=$f Hz has_scom=$has_scom"		
+		
+		#translate illegal characters in name to legal characters
+		regsub -all "\\-" $tracename "_" tracename
+		
+		if {[catch {set s [tracebuffer_2_23 ::${name}_${tracename} $this -tracename $tracename -tracenum $i -freq $f -has_scom $has_scom]} result]} {
+		    bgerror "can't make trace $i for $this: $result"
+		    return
+		}
+
+		lappend traceobjs_all $s
+
+		# Add sensors to list
+		if {[lsearch -exact $trace_list_all $i] == -1} {
+		    lappend trace_list_all $i
+		}
+		if {[lsearch -exact $trace_list_all_name $tracename] == -1} {
+		    lappend trace_list_all_name $tracename
+		}
+		#By default: no sensors are monitored
+		#set ::tracenum2name($name,$i) $tracename
+		#set ::tracenum2obj($name,$i) $s
+		#$s configure -tracename $tracename -tracenum $i -freq $f
+
+		#::amesterdebug::debug ame "$sensorname num=$i unit=[$s cget -u_value] freq=[$s cget -freq] scalefactor=[$s cget -scalefactor]"
+		incr i
+		
+	    }
+	} else {
+	    ::amesterdebug::debug ame "error in getting trace number $i"
+	}
+    }
+    set trace_list_all_name [lsort -ascii $trace_list_all_name]
+}
+
+
+
+##
+# Read a specific internal variable by name
+#
+# Variables supported:
+#   api_major:      Major revision number of the API 
+#   api_minor:      Minor revision number of the API
+#   amec_ver_major: Major revision number of the AMEC
+#   amec_ver_minor: Minor revision number of the AMEC
+#   sensors:        A list of all supported sensor objects
+#   monitored:      A list of all sensor objects with monitoring enabled
+#   sensorname:     Takes a whitespace-delimited string list of sensor names as
+#                   a second argument and returns a list of sensor objects
+#                   corresponding to those names.  For example:
+#                     $amec get sensorname "pwr1s spd1msCPU0"
+#
+# Parameter what: The name of the variable in question
+# Parameter args: Variable-specific options
+# Returns: Value of the given variable, or an error code if no such 
+#          variable exists
+body ame_2_27::get {what args} {
+	switch $what {
+	    api_major {return $api_major}
+	    api_minor {return $api_minor}
+	    ame_version {return $ame_version}
+	    ame_date {return $ame_date}
+	    api_version {return $api_version}
+	    amec_ver_major {return $amec_ver_major}
+	    amec_ver_minor {return $amec_ver_minor}
+	    ame_ver_major {return $ame_ver_major}
+	    ame_ver_minor {return $ame_ver_minor}
+	    sensors {return $sensorobjs_all}
+	    monitored {return $sensorobjs}
+	    sensorname {
+		set templist {}
+		#args will be a concat of remaining parameters into a 1 item list.
+		set thesensors [split [lindex $args 0]]
+		foreach sn $thesensors {
+		    if {$sn eq {}} {continue}
+		    set obj [find object ${this}_${sn}]
+		    if {$obj ne ""} {lappend templist $obj}
+		}
+		return $templist
+	    }
+	    traces {return $traceobjs_all}
+	    parmname {
+		set obj [$parm get $what $args]
+		return $obj
+	    }
+	    gui_function_menu {
+		return $gui_function_menu
+	    }
+	    default {return -code error "Invalid arguement for ame_2_27::get : $what $args"}
+	}
+}
+
+
+#
+# Trace Buffer 
+#
+
+body ame_2_27::trace_start {} {
+    set _result [send_sync 3a 3c [binary format "H*" "33"]]
+}
+
+body ame_2_27::trace_stop {} {
+    set _result [send_sync 3a 3c [binary format "H*" "34"]]
+}
+
+
+

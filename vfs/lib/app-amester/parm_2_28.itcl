@@ -1,0 +1,966 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+# parm_2_28.itcl describes the parameter interface in AME API 2.28
+# Adds bulk reading of parameters
+
+# There are two classes for the parameter function in Amester
+# 1. "parm" is the class that describes the interface itself.
+#     -- Initialization of parameter objects
+#     -- Amester GUI interface to parameters
+# 2. "parmobj" is the class that describes the parameter object.
+
+#
+# Class parm
+# This holds functions for the parameter interface
+#  -- Initialization of parameter objects
+#  -- Discover of parameters
+#  -- May actually read/write values from/to the host
+#
+
+class parm_2_28 {
+    public method get {what args}
+    #Bulk read by name and return all values in a list
+    public method read_by_name_sync {namelist}
+
+    public method gui_raise {}
+    public method gui_withdraw {}
+    public method gui_update {}
+    public method gui_update_do {}
+    public method gui_refresh {}
+    public method gui_select_parm {}
+    public method gui_select_cols {}
+    public method gui_set_parm_by_name {list}
+    public method gui_set_parm_by_object {list}
+    public method gui_add_parm_by_name {list}
+    public method gui_add_parm_by_object {list}
+    public method gui_set_cols {list}
+    public method gui_add_cols {list}
+    public method gui_make {}
+    public method gui_updatescrollregion {{W {}} {w {}} {h {}}}
+
+    # After that throttles updates to GUI
+    private variable gui_update_after 0
+    # Current list of parameters in GUI
+    private variable parm_list_name {}
+    # List of all available parameters by name
+    private variable parm_list_name_all {}
+
+    # Current list of columns in GUI
+    private variable cols_list {name value refresh}
+    # List of all available columns by name
+    private variable cols_list_all {name value refresh size vectorsize bytecount mode type number}
+    private variable window_titles
+    private variable window_elements
+
+    private method init {}
+    private variable initialized 0
+    public variable numparms 0 
+ 
+    private variable amec {}
+    private variable host {}
+
+    private variable parmobjs_all {}
+    private variable parmobjs_all_sorted {}
+    #Mapping of parameter name to object (hash)
+    private variable name2obj
+
+    public common num2type
+    set num2type(0) uint8
+    set num2type(1) uint16
+    set num2type(2) uint32
+    set num2type(3) uint64
+    set num2type(4) int8
+    set num2type(5) int16
+    set num2type(6) int32
+    set num2type(7) int64
+    set num2type(8) string
+    set num2type(9) raw
+
+    #GUI
+    private variable widget {}
+
+    public variable objname {}
+
+    constructor {parent args} {
+        ::amesterdebug::debug object "constructor for $this"
+        #init name to object name (can be overridden by arg)
+        regsub -all "::" $this "" objname
+        set amec $parent
+        set host [$amec cget -host]
+	#name of widget that displays parameters
+	set widget .${objname}
+        eval configure $args
+	init
+    }
+
+    destructor {
+	::amesterdebug::debug object "$this destructor"
+    }
+}
+
+# Get number of parameters and configuration
+body parm_2_28::init {} {
+
+    if {$initialized} {return}
+
+    set ame_version [$amec get ame_version]
+    set api_version [$amec get api_version]
+    
+    #If class was initialized with number of parameters, trust it.
+    #Otherwise, get number of parameters from host
+    if {$numparms == 0} {
+	set result [$amec send_sync_cache 3a 3c [binary format "H2" 40] $::priority_highest "$ame_version $api_version"]
+	set err [lindex $result 0]
+	if {$err != 0} {
+	    return -code error "$host: Error code $err when getting number of parameters"
+	}
+	set n [binary scan [lindex $result 1] "S" numparms]
+	if {$n != 1} {
+	    binary scan [lindex $result 1] "H*" all
+	    return -code error "$host: Error in response to get number of parameters: $all"
+	}
+    }
+
+    #Get config
+    for {set i 0} {$i < $numparms} {} {
+	set length 0
+	::amesterdebug::debug parm "$this: get parm $i onward"
+	set result [$amec send_sync_cache 3a 3c [binary format "H*S" 41 $i] $::priority_highest "$ame_version $api_version"]
+
+	if {[lindex $result 0] == 0} {
+	    set j 0 
+	    set databytes [lindex $result 1]
+	    set databytes_len [string length $databytes]
+	    
+	    ::amesterdebug::debug parm "  got $databytes_len bytes"
+	    
+	    while {$j < $databytes_len} {
+		
+		set name_start $j
+		
+		while {$j < $databytes_len} {
+		    binary scan $databytes "@${j}c" xx
+		    if {$xx == 0} {
+			break
+		    }
+		    incr j
+		}
+		set name_len [expr {$j - $name_start}]
+		#::amesterdebug::debug ame "parm name is $name_len bytes"
+		binary scan $databytes "@${name_start}A${name_len}" parmname
+		::amesterdebug::debug parm "found name = $parmname"
+		#Skip over null byte
+		incr j
+
+		#Get fixed width data
+		binary scan $databytes "@${j}ccI" typenum mode vectorlength 
+		#Convert to unsigned
+		set typenum [expr {$typenum & 0xff}]
+		set mode [expr {$mode & 0xff}]
+		set vectorlength [expr {$vectorlength & 0xffff}]
+		incr j 6
+		if {[info exists num2type($typenum)]} {
+		    set type $num2type($typenum)
+		} else {
+		    set type "unknown"
+		}
+		switch $type {
+		    uint8 {set length 1}
+		    uint16 {set length 2}
+		    uint32 {set length 4}
+		    uint64 {set length 8}
+		    int8 {set length 1}
+		    int16 {set length 2}
+		    int32 {set length 4}
+		    int64 {set length 8}
+		    string {
+			binary scan $databytes "@${j}I" length 
+			incr j 4
+		    }
+		    raw {
+			binary scan $databytes "@${j}I" length 
+			incr j 4
+		    }
+		    default {
+			return -code error "Unknown parameter type=$typenum for parameter num=$i"
+		    }
+		}
+		#Convert to unsigned
+		set length [expr {$length & 0xffff}]
+
+
+		if {[catch {set obj [parmobj_2_28 "::${amec}_${parmname}" $this $amec $parmname $i $type $mode $vectorlength $length] } result]} {
+		    bgerror "can't make parmameter $i for $this: $result"
+		    return
+		}
+	    
+		lappend parmobjs_all $obj
+		lappend parm_list_name_all $parmname
+		set name2obj($parmname) $obj
+	    
+		# Make the parameter
+		::amesterdebug::debug ame "name=$parmname num=$i type=$type mode=$mode vector=$vectorlength length=$length"
+		incr i
+	    }
+	}
+    }
+    set initialized 1
+
+    if {$::options(gui)} {
+	.host.c.f.${host}_menu.functions.m.[$amec cget -name] add command -label "Parameters..." -command [code $this gui_raise]
+    }
+
+    set parm_list_name_all [lsort -ascii $parm_list_name_all]
+    foreach pname $parm_list_name_all {
+	lappend parmobjs_all_sorted $name2obj($pname)
+    }
+
+}
+
+body parm_2_28::get {what args} {
+	switch $what {
+	    parmobjs {return $parmobjs_all_sorted}
+	    parmname {
+		set templist {}
+		#args will be a concat of remaining parameters into a 1 item list.
+		set _names [split [lindex $args 0]]
+		foreach n $_names {
+		    if {[info exists name2obj($n)]} {
+			lappend templist $name2obj($n)
+		    }
+		}
+		return $templist
+	    }
+	    default {return -code error "Invalid arguement for parm_2_28::get : $what $args"}
+	}
+}
+
+body parm_2_28::gui_select_parm {} {
+    multiselect \#auto [scope parm_list_name_all] [scope parm_list_name] [code $this gui_update]
+}
+
+body parm_2_28::gui_set_cols {i_list} {
+    foreach p $i_list {
+	if {[lsearch -exact $cols_list_all $p] == -1} {
+	    return -code error "Error: $this does not have column named $p"
+	}
+	if {[lsearch -exact $cols_list $p] == -1} {
+	    lappend _cols $p
+	}
+    }
+    set cols_list $_cols
+    gui_update    
+}
+
+
+body parm_2_28::gui_set_parm_by_name {i_list} {
+    set _list {}
+    foreach p $i_list {
+	if {![info exists name2obj($p)]} {
+	    return -code error "Error: $this does not have parameter named $p"
+	}
+	if {[lsearch -exact $_list $p] == -1} {
+	    lappend _list $p
+	}
+    }
+    set parm_list_name $_list
+    gui_update    
+}
+
+body parm_2_28::gui_set_parm_by_object {i_list} {
+    set _list {}
+    foreach p $i_list {
+	if {![$p isa parmobj_2_28]} {
+	    return -code error "Error: $p is not an object of class parmobj_2_28"
+	}
+	set _name [$p configure -name]
+	if {[lsearch -exact $_list $_name] == -1} {
+	    lappend _list $_name
+	}
+    }
+    set parm_list_name $_list
+    gui_update
+}
+
+body parm_2_28::gui_add_cols {i_list} {
+    gui_set_cols [concat $cols_list $i_list]
+}
+
+body parm_2_28::gui_add_parm_by_name {i_list} {
+    gui_set_parm_by_name [concat $parm_list_name $i_list]
+}
+
+body parm_2_28::gui_add_parm_by_object {i_list} {
+    #Start with all current parameters
+    foreach p $parm_list_name {
+	if {![info exists name2obj($p)]} {
+	    return -code error "Error: $this does not have parameter named $p"
+	} else {
+	    lappend _list $name2obj($p)
+	}
+    }
+    gui_set_parm_by_object [concat $_list $i_list]
+}
+
+
+
+body parm_2_28::gui_update_do {} {
+    if {!$::options(gui)} {return}
+
+    if {![winfo exists $widget]} {
+	return
+    }
+
+    # grab updated values
+    gui_refresh
+
+    #child is the last element put in the grid. Need to sync window update.
+    set child ""
+
+    #variables for specifying the grid
+    set row 0
+    set col 0
+
+    # unpack things in .host
+    foreach t [grid slaves ${widget}.c.s] {
+	grid remove $t
+    }
+
+    # Pack column titles
+    set row 0
+    set col 0
+
+    foreach t $cols_list  {
+	if {![info exists window_titles($t)] 
+	    || ![winfo exists $window_titles($t)]} {
+	    # make the column title
+	    set anchor e
+	    if {$t eq "name"} {set anchor w}
+	    set window_titles($t) [label $widget.c.s.title_${t} -text $t -anchor $anchor -font $::fixedfont]
+	}
+	grid $window_titles($t) -row $row -column $col -ipadx 10 -sticky news
+	set child $window_titles($t)
+	incr col
+    }
+    incr row
+
+    #Draw separator line, but only if there are statistics to display
+    set l [llength $cols_list]
+    if {$l > 0} {
+	grid ${widget}.c.s.sep -row $row -column 0 -columnspan $l -sticky news
+    }
+
+    # Add parameters to be displayed
+    incr row
+    foreach {s} $parm_list_name {
+	set col 0
+	foreach {t}  $cols_list  {
+	    if {![info exists window_elements($s,$t)] 
+		|| ![winfo exists $window_elements($s,$t)]} {
+		#make the element
+		set e [$name2obj($s) getgui $t ${widget}.c.s]
+		set window_elements($s,$t) $e
+	    }
+	    grid $window_elements($s,$t) -row $row -column $col -ipadx 10 -sticky news
+	    set child $window_elements($s,$t)
+	    incr col
+        }
+	incr row
+    }
+
+    #Make grid stretchable
+    set size [grid size ${widget}.c.s]
+    set rm [lindex $size 1]
+    set cm [lindex $size 0]
+    for {set row 0} {$row < $rm} {incr row} {
+	grid rowconfigure ${widget}.c.s $row -weight 1
+    }
+    for {set col 0} {$col < [expr {$cm - 1}]} {incr col} {
+	grid columnconfigure ${widget}.c.s $col -weight 1
+    }
+
+    if {[wm state $widget] eq "normal" && $child ne ""} {
+	#puts "child is $child"
+	tkwait visibility $child
+    } else {
+	#puts "no child"
+    }
+
+    set bbox [grid bbox ${widget}.c.s 1 2]
+    set inc [lindex $bbox 3]
+    set incw [lindex $bbox 2]
+    set width [winfo reqwidth ${widget}.c.s]
+    set height [winfo reqheight ${widget}.c.s]
+
+    ${widget}.c config -scrollregion "0 0 $width $height"
+    ${widget}.c config -yscrollincrement $inc
+    ${widget}.c config -xscrollincrement $incw
+}
+
+#Bulk read by name and return all values in a list
+body parm_2_28::read_by_name_sync {namelist} {
+    set _results {}
+    set _objlist {}
+
+    #Check namelist is legal
+    foreach n $namelist {
+        if {[info exists name2obj($n)]} {
+            lappend _objlist $name2obj($n)
+        } else {
+            return -code error "$this: Cannot read unknown parameter $n"
+        }
+    }
+
+    #Start at beginning of first parameter
+    #_offset is index to parameter byte to request
+    set _offset 0
+    #_cache holds partially or fully read parameter
+    set _cache {}
+
+    #While there are objects on the list to fetch...
+    while {[llength $_objlist]} {
+
+        # -5 = -1 for command byte and -4 for offset byte
+        set _cmd_left [expr [$amec cget -message_size] - 5]
+        set _resp_left [$amec cget -message_return_size]
+        set _cmdlist {}
+        set _cmdlistobj {}
+        # Count parms put in this command
+        set _parmcount 0
+        while {$_cmd_left > 0 && $_resp_left > 0} {
+            #If space left in command and space left in response,
+            incr _parmcount
+
+            if {[llength $_objlist] == 0} {
+                #Done with objs, so send this command
+                break
+            }
+
+            #Put parameter number into list for this command
+            set _obj  [lindex $_objlist 0]
+            lappend _cmdlist [$_obj cget -number]
+            #Keep a parallel list of the objects going into the command
+            lappend _cmdlistobj $_obj
+            incr _cmd_left -2
+            #Set starting byte in the first parameter to read
+            set _offset [string length $_cache]
+            if {$_parmcount == 1} {
+                #use offset for the first parameter, but not the rest
+                incr _resp_left [expr -([$_obj cget -bytecount]-$_offset)]
+            } else {
+                incr _resp_left [expr -([$_obj cget -bytecount])]
+            }
+
+            ::amesterdebug::debug parm "  obj bytes = [$_obj cget -bytecount], _offset=$_offset --> resp_left=$_resp_left"
+            
+            if {$_resp_left >= 0} {
+                #Full read of parameter is possible, so remove
+                #from objlist
+                set _objlist [lreplace $_objlist 0 0]
+            } else {
+                #This parameter will have a partial read starting
+                #at _offset.
+                #Nothing to do here, since loop conditions should
+                #detect response packet is full.
+            }
+        }
+        
+        if {$_resp_left >= 0} {
+            set _expectedbytes [expr [$amec cget -message_return_size] - $_resp_left]
+        } else {
+            set _expectedbytes [$amec cget -message_return_size]
+        }
+        ::amesterdebug::debug parm "  expectedbytes = $_expectedbytes"
+
+        if {[::amesterdebug::set parm]} {
+            set _list {}
+            foreach _obj $_cmdlistobj {lappend _list [$_obj cget -name]}
+            ::amesterdebug::debug parm "$this: bulk read for $_list"
+        }
+        
+        #Send command and wait here for results
+        set result [$amec send_sync 3a 3c [binary format "H2IS*" "42" $_offset $_cmdlist]]
+	set err [lindex $result 0]
+	if {$err} {
+	    return -code error "$this read_by_name: Error=$err index=$_offset cmdlist=$_cmdlist"	    
+	}
+	set bytes [lindex $result 1]
+        # Check if enough bytes came back
+        if {$_expectedbytes != [string length $bytes]} {
+            return -code error "$this read_by_name: Error, expected bytes = $_expectedbytes but [string length $bytes] were returned for index=$_offset cmdlist=$_cmdlist"
+        }
+
+        # count iterations for error checking
+        set _iter 0
+        foreach _obj $_cmdlistobj {
+            incr _iter
+            ::amesterdebug::debug parm " iter=$_iter for cmdlist=$_cmdlist"
+            #Attempt to read the remaining bytes of the parm
+            set remain [expr [$_obj cget -bytecount] - [string length $_cache]]
+            set _partial [string range $bytes 0 [expr $remain - 1]]
+            if {[string length $_partial] == 0} {
+                return -code error "$this read_by_name: Zero bytes read while processing [$_obj cget -name]"
+            }
+            set bytes [string replace $bytes 0 [expr $remain - 1]]
+            #binary scan $bytes "@${j}a${remain}" _partial
+            binary scan $_partial H* all
+            append _cache $_partial
+            if {[string length $_cache] == [$_obj cget -bytecount]} {
+                ::amesterdebug::debug parm "  Full read for [$_obj cget -name]. cachesize=[string length $_cache] remain=$remain partialsize=[string length $_partial] partial=$all"
+                #This parameter was fully read
+                #Process the bytes collected and flush the cache
+                #for the next parameter in the response.
+                lappend _results [$_obj update_from_raw $_cache]
+                set _cache {}
+                set _offset 0
+            } else {
+                #The response holds a partial read for this parameter
+                #The partial read is cached and we issue another command starting at
+                #a new index into the parameter to get the remaining bytes.
+                binary scan $_partial H* all
+                ::amesterdebug::debug parm "  Partial read for [$_obj cget -name]. cachesize=[string length $_cache] remain=$remain partialsize=[string length $_partial] partial=$all"
+                #
+                #This should be the last element in the loop, or else a partial
+                #read would not be possible.
+                if {$_iter != [llength $_cmdlistobj]} {
+                    return -code error "$this read_by_name: Got partial result for $_obj ([$_obj cget -number]) which is position $_iter of [llength $_cmdlistobj] in response"
+                }
+
+            }
+        }
+        
+    }
+    return $_results    
+}
+
+body parm_2_28::gui_refresh {} {
+    #Re-read each parameter value
+    read_by_name_sync $parm_list_name
+}
+
+body parm_2_28::gui_update {} {
+    after cancel $gui_update_after
+    set gui_update_after [after 500 [code $this gui_update_do] ]
+}
+
+body parm_2_28::gui_select_cols {} {
+    multiselect \#auto [scope cols_list_all] [scope cols_list] [code $this gui_update]
+}
+
+body parm_2_28::gui_raise {} {
+    if {[winfo exists $widget]} {
+	wm deiconify $widget
+    } else {
+	gui_make
+    }
+    focus $widget
+    raise $widget
+    wm deiconify $widget
+    gui_update
+}
+
+body parm_2_28::gui_withdraw {} {
+    if {[winfo exists $widget]} {
+	wm withdraw $widget
+    }
+}
+
+
+
+body parm_2_28::gui_make {} {
+    if {[winfo exists $widget]} {
+	return
+    }
+
+    toplevel $widget
+    #wm withdraw $widget
+    wm protocol $widget WM_DELETE_WINDOW [code $this gui_withdraw]
+
+    frame ${widget}.bbar -relief raised -bd 2
+    button ${widget}.bbar.selparm -text "Select parameters" -command [code $this gui_select_parm]
+    button ${widget}.bbar.selcols -text "Select columns" -command [code $this gui_select_cols]
+    button ${widget}.bbar.refresh -text "Refresh values" -command [code $this gui_refresh]
+    pack ${widget}.bbar.selparm ${widget}.bbar.selcols ${widget}.bbar.refresh -side left
+    
+    #frame for parameters
+    canvas ${widget}.c -yscrollcommand [list ${widget}.yscroll set] -xscrollcommand [list ${widget}.xscroll set]
+    frame ${widget}.c.s
+    scrollbar ${widget}.yscroll -orient vertical -command [list ${widget}.c yview]
+    scrollbar ${widget}.xscroll -orient horizontal -command [list ${widget}.c xview]
+    ${widget}.c create window 0 0 -anchor nw -window ${widget}.c.s
+    
+    frame ${widget}.c.s.sep -bg black -height 2
+    
+    wm title ${widget} "[$amec cget -name] parameters"
+    wm resizable ${widget} 1 1
+    pack ${widget}.bbar -side top -fill x
+    pack ${widget}.yscroll -side right -fill y
+    pack ${widget}.xscroll -side bottom -fill x
+    pack ${widget}.c -side left -fill both -expand true
+    
+    #Detect any changes in the size of the gridded frame so that the
+    #canvas scrollbars can be updated and show the whole frame
+    bind ${widget}.c.s <Configure> "$this gui_updatescrollregion %W %w %h"    
+    
+}
+
+body parm_2_28::gui_updatescrollregion {{W {}} {w {}} {h {}}} {
+    #puts "$W is now $w $h"
+    ${widget}.c config -scrollregion [list 0 0 [winfo reqwidth ${widget}.c.s] [winfo reqheight ${widget}.c.s]]
+}
+
+
+
+#
+# Class parmobj
+# This is a class representing an individual parameter
+#
+
+class parmobj_2_28 {
+    # Helper function used by read and read_by_name to parse
+    # raw bytes into a nice value for display and update the object
+    public method update_from_raw {rawbytes}
+    # Fetch the current value of the parameter from the host
+    public method read {}
+    # Set a new value for the parameter
+    public method write {newvalue}
+    # Return (possibly creating) a GUI element with the value.
+    public method getgui {what {i_parent ""}}
+    # Parse raw bytes into a nice value for this parameter
+    public method parse {bytes}
+
+    #Name of object without "::"
+    public variable objname ""
+
+    #Parm parent
+    private variable parm {}
+    private variable amec {}
+    private variable host {}
+
+    # Not initialized with data
+    private variable initialized 0
+    # Name of parameter
+    public variable name ""
+    # Number of parameter
+    public variable number ""
+    # Current value (represents state on host-side)
+    public variable value {uninitialized}
+    # Size of value in bytes
+    public variable size 0
+    # Vector length (normally = 1)
+    public variable vectorsize 0
+    # Total size
+    public variable bytecount 0
+    # Mode
+    public variable mode 0
+    # Type
+    public variable type {}
+
+    # GUI element
+    #private variable widget {}
+    # GUI element value
+    private variable widget_value {}
+    # GUI update
+    private method gui_update {widget}
+
+    constructor {parent i_amec i_name i_number i_type i_mode i_vecsize i_size args} {
+        ::amesterdebug::debug object "constructor for $this"
+        #init name to object name (can be overridden by arg)
+        regsub -all "::" $this "" objname
+        set parm $parent
+	set amec $i_amec
+	set name $i_name
+	set number $i_number
+	set type $i_type
+	set mode $i_mode
+	set vectorsize $i_vecsize
+	set size $i_size
+	set bytecount [expr {$i_vecsize * $i_size}]
+	set host [$amec cget -host]
+        eval configure $args
+    }
+
+    destructor {
+	::amesterdebug::debug object "$this destructor"
+	$parm parm_window_delete $this
+	if {$widget ne {}} {
+	    destroy $widget
+	}
+    }
+
+}
+
+
+# Takes raw bytes and transforms them into a human readable
+# value based on parameter configuration.  
+# Used by tracebuffer::parse.  Perhaps could be used by parmobj::read
+body parmobj_2_28::parse {i_bytes} {
+    # i_bytes: the binary string to parse
+
+    # Parse the bytes into vectors
+    set index 0
+    set _array {}
+    set _nicevalue {}
+    set _value {}
+    switch $type {
+	uint8 {
+	    #uint8
+	    binary scan $i_bytes c* _value
+	    foreach v $_value {
+		lappend _array [expr {$v & 0xff}]
+	    }
+	    set _nicevalue $_array
+	}
+	uint16 {
+	    #uint16
+	    binary scan $i_bytes S* _value
+	    foreach v $_value {
+		lappend _array [expr {$v & 0xffff}]
+	    }
+	    set _nicevalue $_array
+	}
+	uint32 {
+	    #uint32
+	    binary scan $i_bytes I* _value
+	    foreach v $_value {
+		lappend _array [expr {$v & 0xffffffff}]
+	    }
+	    set _nicevalue $_array
+	}
+	uint64 {
+	    #uint64
+	    binary scan $i_bytes W* _value
+	    foreach v $_value {
+		lappend _array [expr {$v & 0xffffffffffffffff}]
+	    }
+	    set _nicevalue $_array
+	}
+	int8 {
+	    binary scan $i_bytes c* _value
+	    set _nicevalue $_value
+	}
+	int16 {
+	    binary scan $i_bytes S* _value
+	    set _nicevalue $_value
+	}
+	int32 {
+	    binary scan $i_bytes I* _value
+	    set _nicevalue $_value
+	}
+	int64 {
+	    binary scan $i_bytes W* _value
+	    set _nicevalue $_value
+	}
+	string {
+	    #string
+	    set _value {}
+	    while {$index < $bytecount} {
+		set j $index
+		while {$j < $bytecount} {
+		    binary scan $i_bytes "@${j}c" xx
+		    if {$xx == 0} {
+			break
+		    }
+		    incr j
+		}
+		set word_len [expr {$j - $index}]
+		binary scan $i_bytes @${index}a${word_len} word
+		lappend _value $word
+		incr index $size
+	    }
+	    set _nicevalue $_value
+	}
+	raw {
+	    #raw
+	    set _value {}
+	    binary scan $i_bytes a* _value
+	    binary scan $_value H* all
+	    set _nicevalue $all
+	}
+	default {
+	    return -code error "$this parse: Unknown type = $type"
+	}
+    }
+    return $_nicevalue
+}
+
+#Update the internal local object from a raw representation and
+#return the nice value for display
+body parmobj_2_28::update_from_raw {rawbytes} {
+    # Parse the bytes into vectors
+    set value [parse $rawbytes]
+    set widget_value $value
+    # Mark as initialized
+    set initialized 1
+    return $value
+}
+
+body parmobj_2_28::read {} {
+    set _cache {}
+
+    #Total bytes returned
+    set _total 0
+
+    ::amesterdebug::debug parm "read $name of length $size bytes"
+
+    # Get all bytes for this parameter
+    while {$_total < $bytecount} {
+	::amesterdebug::debug parm "  fetch from byte $_total"
+	set result [$amec send_sync 3a 3c [binary format "H*IS" 42 $_total $number]]
+	set err [lindex $result 0]
+	if {$err} {
+	    return -code error "$this read: Error=$err index=$_total number=$number"	    
+	}
+	set bytes [lindex $result 1]
+	set n [string length $bytes]
+	incr _total $n
+	::amesterdebug::debug parm "  received $n bytes"
+	append _cache $bytes
+    }
+
+    if {$_total > $bytecount} {
+	::amesterdebug::debug 1 "Error: received too much data while reading $this. (bytecount=$bytecount total=$_total)"
+    }
+
+    return [update_from_raw $_cache]
+}
+
+
+body parmobj_2_28::write {newvalue} {
+    set _cache {}
+
+    # Create _cache of bytes to write to host
+
+    set index 0
+    switch $type {
+	uint8 {
+	    set _cache [binary format c* $newvalue]
+	}
+	uint16 {
+	    set _cache [binary format S* $newvalue]
+	}
+	uint32 {
+	    set _cache [binary format I* $newvalue]
+	}
+	uint64 {
+	    set _cache [binary format W* $newvalue]
+	}
+	int8 {
+	    set _cache [binary format c* $newvalue]
+	}
+	int16 {
+	    set _cache [binary format S* $newvalue]
+	}
+	int32 {
+	    set _cache [binary format I* $newvalue]
+	}
+	int64 {
+	    set _cache [binary format W* $newvalue]
+	}
+	string {
+	    #string
+	    set _cache {}
+	    foreach v $newvalue {
+		set _new [binary format a${size} $v]
+		append _cache $_new
+	    }
+	}
+	raw {
+	    #raw
+	    set _cache [binary format H* $newvalue]
+	}
+	default {
+	    return -code error "$this write: Unknown type = $type"
+	}
+    }
+
+    set newvaluesize [string length $_cache]
+    #Check size of value to write
+    if {$newvaluesize < $bytecount} {
+	return -code error "Too little data for writing value ($newvaluesize / $valuesize bytes)"
+    }
+    if {$newvaluesize > $bytecount} {
+	return -code error "Too much data for writing value ($newvaluesize / $valuesize bytes)"
+    }
+    
+    set index 0
+    set message_size [$amec cget -message_size]
+    #remove command byte (0x43), parameter number, and index fields = 7 bytes
+    set content_size [expr {$message_size - 7}]
+
+    # Write back _cache to host
+    while {$index < $bytecount} {
+	set bytesleft [expr {$bytecount - $index}]
+	if {$bytesleft > $content_size} {
+	    set payloadsize $content_size
+	} else {
+	    set payloadsize $bytesleft
+	}
+	set n [binary scan $_cache @${index}a${payloadsize} _input]
+	set result [$amec send_sync 3a 3c [binary format "H*SIa*" 43 $number $index $_input]]
+	set err [lindex $result 0]
+	set bytes [lindex $result 1]
+	set n [binary scan $bytes H* all]
+	if {$n == 0} {
+	    return -code error "Bad IPMI response during parameter write. Parameter value may be corrupt."
+	}
+	::amesterdebug::debug parm "write returned (err=$err) $all"
+	binary scan $bytes I written
+	set written [expr {0xffffffff & $written}]
+	incr index $written
+    }
+
+    set value $newvalue
+    
+}
+
+#Return a gui object for reading/writing this parameter
+body parmobj_2_28::getgui {what {i_parent ""}} {
+    ::amesterdebug::debug parm "$this get gui"
+    set _widget {}
+    set _ename [string tolower ${name}_${what}]
+    set _wname "${i_parent}.${_ename}"
+    if {[winfo exists $_wname]} {
+	return $_wname
+    }
+
+    if {$i_parent eq ""} {toplevel $_wname}
+    switch $what {
+	value {
+	    set _widget [entry $_wname -textvariable [scope widget_value] -width 16 -font $::fixedfont -justify right -background white -foreground black -disabledbackground black -disabledforeground white] 
+	    #Set read-only to different background color
+	    if {[expr {$mode & 0x1}] == 1} {$_widget configure -background grey}
+	    bind $_widget <Return> [code $this gui_update $_widget]
+	    bind $_widget <Tab> [code $this gui_update $_widget]
+	    # Put an initial value into the GUI
+	    if {!$initialized} {read}
+	}
+	name {set _widget [label $_wname -text $name -anchor w -font $::fixedfont]}
+	number {set _widget [label $_wname -text $number -anchor e -font $::fixedfont]}
+	size {set _widget [label $_wname -text $size -anchor e -font $::fixedfont]}
+	vectorsize {set _widget [label $_wname -text $vectorsize -anchor e -font $::fixedfont]}
+	bytecount {set _widget [label $_wname -text $bytecount -anchor e -font $::fixedfont]}
+	mode {set _widget [label $_wname -text $mode -anchor e -font $::fixedfont]}
+	type {set _widget [label $_wname -text $type -anchor e -font $::fixedfont]}
+	refresh {set _widget [button $_wname -text "Refresh" -command [code $this read]]}
+
+	default {return -code error "$this getgui: unknown item $what"}
+    }
+    return $_widget
+}
+
+body parmobj_2_28::gui_update {widget} {
+    $widget configure -state disable
+    if {[catch {write $widget_value} result]} {
+	bgerror "$this: error updating parameter to value=\"$widget_value\""
+	#reset widget
+	set widget_value $value
+    }
+    if {[expr {$mode & 0x1}] == 1} {
+	$widget configure -state readonly
+    } else {
+	$widget configure -state normal
+    }
+}

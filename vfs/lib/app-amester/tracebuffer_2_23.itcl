@@ -1,0 +1,615 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+# tracebuffer_2_23 describes the tracebuffer found in AME API 2.23
+
+class tracebuffer_2_23 {
+    inherit tracebuffer
+
+    #The ame component to which this object belongs
+    public variable amec ""
+    #The host to which this object belongs. Cached for convenience.
+    public variable host ""
+
+    #Name of object without "::"
+    public variable objname ""
+
+    #Name of trace
+    public variable tracename ""
+
+    #Number of trace
+    public variable tracenum ""
+
+    #Update frequency
+    public variable freq 0
+
+    #Has SCOM (1= is capable of tracing SCOMs)
+    public variable has_scom 0
+
+    # Methods
+    public method debuginfo {}
+    public method get_config {}
+    public method set_config {sensor_field_list parm_list scom_list {sockets {}}}
+    public method read {startbyte}
+    public method start {}
+    public method stop {}
+    public method get_all_entries {}
+    public method get_bytes {}
+    public method load_from_file {filename}
+
+    # Internal methods (public for debugging)
+    public method read_bytes {startbyte}
+    public method download {}
+    public method parse {}
+
+    private variable scom_map
+
+    constructor {parent args} {
+        ::amesterdebug::debug trace "constructor for $this"
+        #init name to object name (can be overridden by arg)
+        regsub -all "::" $this "" objname
+        set amec $parent
+        set host [$parent cget -host]
+        eval configure $args
+
+    }
+
+    destructor {
+    }
+
+    #User input
+    protected variable tb_user_sensor_field_list {}
+    protected variable tb_user_parm_list {}
+    protected variable tb_user_scom_list {}
+    protected variable tb_user_sockets_bitmap -1
+
+    #Parsed input
+    
+    #tb_sensor_list is a list of {sobj field type mask size}
+    protected variable tb_sensor_list {}
+    #tb_scom_list is a list of {rw address data}
+    protected variable tb_scom_list {}
+    #tb_parm_list is a list of parameter objects
+    protected variable tb_parm_list {}
+
+    #Server side state variables in TMPD firmware
+    protected variable tb_size 0
+    protected variable tb_entry_size 0
+    protected variable tb_entry_n 0
+    protected variable tb_oca_offset 0
+    protected variable tb_write 0
+    protected variable tb_read 0
+    protected variable tb_sensors_n 0
+    protected variable tb_oca_n 0
+    protected variable tb_record 0
+    protected variable tb_continuous 0
+    protected variable tb_sensors_max 0
+    protected variable tb_oca_max 0
+    protected variable tb_chips_max 0
+    protected variable tb_parm_max 0
+    protected variable tb_parm_n 0
+
+    #Derived state
+
+    #Downloaded trace bytes
+    protected variable tb_bytes {}
+    #List of parsed entries
+    protected variable tb_entries {}
+}
+
+body tracebuffer_2_23::debuginfo {} {
+    ::amesterdebug::set tb 1
+    get_config
+    ::amesterdebug::set tb 0
+}
+
+
+body tracebuffer_2_23::get_config {} {
+    set _result [$amec send_sync 3a 3c [binary format "H*c" "3f" $tracenum]]
+    set _status [lindex $_result 0] 
+    set _data [lindex $_result 1]
+
+    set _n [binary scan $_data "IIIIIIIIccccccccc" _tb_bytes _tb_size _tb_entry_size _tb_entry_n _tb_oca_offset _tb_write _tb_write_oca _tb_read _tb_sensors_n _tb_parm_n _tb_oca_n _tb_record _tb_continuous _tb_sensors_max _tb_oca_max _tb_chips_max _tb_parm_max]
+
+    #Convert to unsigned
+    set _tb_bytes [expr 0xffffffff & $_tb_bytes]
+    set _tb_size [expr 0xffffffff & $_tb_size]
+    set _tb_entry_size [expr 0xffffffff & $_tb_entry_size]
+    set _tb_entry_n [expr 0xffffffff & $_tb_entry_n]
+    set _tb_oca_offset [expr 0xffffffff & $_tb_oca_offset]
+    set _tb_write [expr 0xffffffff & $_tb_write]
+    set _tb_write_oca [expr 0xffffffff & $_tb_write_oca]
+    set _tb_read [expr 0xffffffff & $_tb_read]
+    set _tb_sensors_n [expr 0xff & $_tb_sensors_n]
+    set _tb_parm_n [expr 0xff & $_tb_parm_n]
+    set _tb_oca_n [expr 0xff & $_tb_oca_n]
+    set _tb_sensors_max [expr 0xff & $_tb_sensors_max]
+    set _tb_oca_max [expr 0xff & $_tb_oca_max]
+    set _tb_parm_max [expr 0xff & $_tb_parm_max]
+    set _tb_chips_max [expr 0xff & $_tb_chips_max]
+
+    ::amesterdebug::debug tb "got $_n fields"
+    ::amesterdebug::debug tb [format "tb_bytes=0x%08x" $_tb_bytes] 
+    ::amesterdebug::debug tb "size=$_tb_size"
+    ::amesterdebug::debug tb "entry_size=$_tb_entry_size "
+    ::amesterdebug::debug tb "entry_n=$_tb_entry_n "
+    ::amesterdebug::debug tb "oca_offset=$_tb_oca_offset "
+    ::amesterdebug::debug tb "tb_write=$_tb_write "
+    ::amesterdebug::debug tb "write_oca=$_tb_write_oca "
+    ::amesterdebug::debug tb "read=$_tb_read "
+    ::amesterdebug::debug tb "sensors_n=$_tb_sensors_n "
+    ::amesterdebug::debug tb "parm_n=$_tb_parm_n"
+    ::amesterdebug::debug tb "oca_n=$_tb_oca_n "
+    ::amesterdebug::debug tb "record=$_tb_record "
+    ::amesterdebug::debug tb "continuous=$_tb_continuous "
+    ::amesterdebug::debug tb "sensors_max=$_tb_sensors_max"
+    ::amesterdebug::debug tb "oca_max=$_tb_oca_max"
+    ::amesterdebug::debug tb "chips_max=$_tb_chips_max"
+    ::amesterdebug::debug tb "parm_max=$_tb_parm_max"
+
+    set tb_size $_tb_size
+    set tb_entry_size $_tb_entry_size
+    set tb_entry_n $_tb_entry_n
+    set tb_oca_offset $_tb_oca_offset
+    set tb_write $_tb_write
+    set tb_read $_tb_read
+    set tb_sensors_n $_tb_sensors_n
+    set tb_parm_n $_tb_parm_n
+    set tb_oca_n $_tb_oca_n
+    set tb_record $_tb_record
+    set tb_continuous $_tb_continuous
+    set tb_sensors_max $_tb_sensors_max
+    set tb_oca_max $_tb_oca_max
+    set tb_chips_max $_tb_chips_max
+    set tb_parm_max $_tb_parm_max
+}
+
+body tracebuffer_2_23::set_config {sensor_field_list parm_list scom_list {sockets {}}} {
+    
+    if {$scom_list ne {} && !$has_scom} {
+	return -code error "ERROR: $this is not capable of tracing SCOMs"
+    }
+
+    set sensor_count 0
+    set parm_count 0
+    set scom_count 0
+    set sensor_num_code {}
+    set sensor_field_code {}
+    set parm_num_code {}
+    set scom_codes {}
+    #default: -1 selects all sockets = 0xffffffff
+    set socket_bitmap -1  
+
+    set tb_user_sensor_field_list $sensor_field_list
+    set tb_user_parm_list $parm_list
+    set tb_user_scom_list $scom_list
+
+    set _parsed_sensor_list {}
+    set _parsed_parm_list {}
+    set _parsed_scom_list {}
+
+    if {$sockets ne {}} {
+	set socket_bitmap 0
+	foreach s $sockets {
+	    set socket_bitmap [expr $socket_bitmap | (1 << $s)]
+	}
+    }
+
+    set tb_user_sockets_bitmap [expr $socket_bitmap & 0x0ffffffff]
+
+    #Parse the user requested fields
+    foreach t $sensor_field_list {
+	::amesterdebug::debug tb "working on sensor $t"
+	#default is value field
+	set f "value"
+	switch [llength $t] {
+	    1 {
+		set s $t
+	    }
+	    2 {
+		set s [lindex $t 0]
+		set f [lindex $t 1]
+	    }
+	    default {
+		return -code error "too many fields in $t"
+	    }
+	}
+	
+	set sobj [find object $s]
+	if {$sobj eq ""} {
+	    set sobj [$amec get sensorname $s]
+	}
+	if {$sobj eq ""} {
+	    return -code error "unknown sensor $s ($t)"
+	}
+	if {$sobj eq {}} {
+	    return -code error "unknown sensor $s ($t)"
+	}
+
+	if {[catch {set snum [$sobj cget -sensornum]} result]} {
+	    return -code error "problem reading object=${sobj} ($t). Error: $result. Sensor field list was $sensor_field_list"
+	}
+
+	switch $f {
+	    value { 
+		set fnum 0
+		set type "S"
+		set mask "0x0ffff"
+		set _size 2
+	    }
+	    min {
+		set fnum 1
+		set type "S"
+		set mask "0x0ffff"
+		set _size 2
+	    }
+	    max {
+		set fnum 2
+		set type "S"
+		set mask "0x0ffff"
+		set _size 2
+	    }
+	    acc {
+		set fnum 3
+		set type "I"
+		set mask "0x0ffffffff"
+		set _size 4
+	    }
+	    updates {
+		set fnum 4
+		set type "I"
+		set mask "0x0ffffffff"
+		set _size 4
+	    }
+	    test {
+		set fnum 5
+		set type "S"
+		set mask "0x0ffff"
+		set _size 2
+	    }
+	    rcnt {
+		set fnum 6
+		set type "I"
+		set mask "0x0ffffffff"
+		set _size 4
+	    }
+	    default {return -code error "Unknown sensor field $f"}
+	}
+	lappend _parsed_sensor_list [list $sobj $f $type $mask $_size]
+	incr sensor_count
+
+	lappend sensor_num_code $snum 
+	lappend sensor_field_code $fnum
+
+    }
+
+    #Parse the user requested parameters
+    foreach s $parm_list {
+	set sobj ""
+	set sobj [find object $s]
+	if {$sobj eq ""} {
+	    set sobj [$amec get parmname $s]
+	}
+	if {$sobj eq ""} {
+	    return -code error "unknown paramter $s"
+	}
+	set snum [$sobj cget -number]
+	lappend parm_num_code $snum
+	lappend _parsed_parm_list $sobj
+	incr parm_count
+    }
+
+
+    #Parse the user requested SCOMs
+
+    foreach _s $scom_list {
+	#Get address of scom.  Should be a hex string like "40020" for Time of Day SCOM.
+	#
+	# New format {mode address <optional data>}
+	set _d {}
+	switch [llength $_s] {
+	    1 {
+		set _mode "r"
+		set _a $_s
+	    }
+	    2 {
+		set _mode [lindex $_s 0]
+		set _a [lindex $_s 1]
+	    }
+	    3 {
+		set _mode [lindex $_s 0]
+		set _a [lindex $_s 1]
+		set _d [lindex $_s 2]
+	    }
+	    default {
+		return -code error "too many fields in $t"
+	    }
+	}
+
+	lappend _parsed_scom_list [list $_mode $_a $_d]
+
+	switch $_mode {
+	    r { # read
+		append scom_codes [binary format "cI" 0 [expr 0x${_a}]]
+	    }
+	    w { # write
+		if {$_d eq {}} {
+		    return -code error "data not provided for write to SCOM $_a"
+		}
+		append scom_codes [binary format "cIW" 1 [expr 0x${_a}] [expr 0x${_d}]]
+	    }
+	    default {
+		return -code error "unknown SCOM mode $_mode for address $_a"
+	    }
+	}
+
+	incr scom_count
+    }
+
+    # Form IPMI message
+    set msg_sensors [binary format "S${sensor_count}c${sensor_count}" $sensor_num_code $sensor_field_code]
+    binary scan $msg_sensors "H*" all
+    ::amesterdebug::debug tb "sensor msg = $all"
+
+    set msg_parm [binary format "S${parm_count}" $parm_num_code]
+    binary scan $msg_parm "H*" all
+    ::amesterdebug::debug tb "parm msg = $all"
+
+    set msg_scoms [binary format "a*" $scom_codes]
+    binary scan $msg_scoms "H*" all
+    ::amesterdebug::debug tb "scom msg = $all"
+
+    set _result [$amec send_sync 3a 3c [binary format "H*cSSSIa*a*a*" "31" $tracenum $sensor_count $parm_count $scom_count $socket_bitmap $msg_sensors $msg_parm $msg_scoms]]
+    set err [lindex $_result 0]
+    set resp [lindex $_result 1]
+    binary scan $resp H* all
+    if {$err != 0} {
+	return -code error "Error configuring $this: err=$err resp=$all"
+    }
+
+    #Read back the configuration to setup for download
+    get_config
+
+    set tb_sensor_list $_parsed_sensor_list
+    set tb_parm_list $_parsed_parm_list
+    set tb_scom_list $_parsed_scom_list
+
+}
+
+#Starts all traces on this host
+body tracebuffer_2_23::start {} {
+    set _result [$amec send_sync 3a 3c [binary format "H*" "33"]]
+}
+
+#Stops all traces on this host
+body tracebuffer_2_23::stop {} {
+    set _result [$amec send_sync 3a 3c [binary format "H*" "34"]]
+}
+
+body tracebuffer_2_23::read {startbyte} {
+    set _result [$amec send_sync 3a 3c [binary format "H2cI" "32" $tracenum $startbyte]]
+    binary scan [lindex $_result 1] "H*" all
+    return $all
+}
+
+body tracebuffer_2_23::read_bytes {startbyte} {
+    #returns a list
+    #element 0: completion code
+    #element 1: Binary string of bytes
+    return [$amec send_sync 3a 3c [binary format "H2cI" "32" $tracenum $startbyte]]
+}
+
+#Internal routine to get the tracebuffer between the read and write pointers
+#Note: it may download a few bytes beyond the end of the write pointer
+body tracebuffer_2_23::download {} {
+    set _firstbyte [expr $tb_entry_size * $tb_read]
+    set _remaining [expr ($tb_write - $tb_read) * $tb_entry_size]
+    set _bytesfetched 0
+
+    #Clear out existing downloaded trace
+    set tb_bytes {}
+
+    while {$_remaining > 0} {
+	set _r [read_bytes $_firstbyte]
+	set _rc [lindex $_r 0]
+	set _bytes [lindex $_r 1]
+
+	if {$_rc} {
+	    ::amesterdebug::debug tb "Error: $this downloading at byte=$_firstbyte"
+	    return 1
+	}
+
+	set _len [string length $_bytes]
+	if {$_len == 0} {
+	    ::amesterdebug::debug tb "Error: $this downloading at byte=$_firstbyte. Got zero bytes"
+	    return 1
+	}
+
+	append tb_bytes $_bytes
+
+	incr _firstbyte $_len
+	incr _bytesfetched $_len
+	set _remaining [expr $_remaining - $_len]
+
+	::amesterdebug::debug tb "$this: fetched=$_bytesfetched len=$_len remain=$_remaining"
+
+    }
+}
+
+
+#Internal routine to parse downloaded bytes into trace entries
+body tracebuffer_2_23::parse {} {
+    set _len [string length $tb_bytes]
+    set _ptr 0
+    set tb_entries {}
+
+    # Calculate how many SCOM fields in an entry
+    set _socks_avail 0
+    for {set _sock $tb_chips_max} {$_sock > 0} {incr _sock -1} {
+	set _socks_avail [expr ($_socks_avail << 1) | 1]
+    }
+    set _socks_avail [expr $_socks_avail & 0x0ffffffff]
+    ::amesterdebug::debug tb "sockets avail bitmap = $_socks_avail"
+    set _socks_used_bitmap [expr $_socks_avail & $tb_user_sockets_bitmap]
+    ::amesterdebug::debug tb "sockets used bitmap = $_socks_used_bitmap"
+    set _sock_count 0
+    while {$_socks_used_bitmap} {
+	if {$_socks_used_bitmap & 1} {incr _sock_count}
+	set _socks_used_bitmap [expr $_socks_used_bitmap >> 1]
+    }
+    ::amesterdebug::debug tb "socket count = $_sock_count"
+
+    set _entries_n [expr $tb_write - $tb_read]
+    set _entry_bytes [expr $_entries_n * $tb_entry_size]
+
+    ::amesterdebug::debug tb "_entries_n = $_entries_n"
+    ::amesterdebug::debug tb "_entry_bytes = $_entry_bytes"
+    
+    while {$_ptr < $_entry_bytes} {
+#	::amesterdebug::debug tb "processed $_p out of $_entry_bytes"
+	set _entry {}
+	set _ptr_next [expr $_ptr + $tb_entry_size]
+	
+	foreach t $tb_sensor_list {
+	    set sobj [lindex $t 0]
+	    set f [lindex $t 1]
+	    #set type [lindex $t 2]
+	    #set mask [lindex $t 3]
+	    #set _size [lindex $t 4]
+
+	    switch $f {
+		value { 
+		    set type "S"
+		    set mask "0x0ffff"
+		    set _size 2
+		    binary scan $tb_bytes "@${_ptr}${type}" value
+		    set sf [$sobj cget -scalefactor]
+		    set finalvalue [expr {($value & $mask)  * $sf}]
+		}
+		min {
+		    set type "S"
+		    set mask "0x0ffff"
+		    set _size 2
+		    binary scan $tb_bytes "@${_ptr}${type}" value
+		    set sf [$sobj cget -scalefactor]
+		    set finalvalue [expr {($value & $mask)  * $sf}]
+		}
+		max {
+		    set type "S"
+		    set mask "0x0ffff"
+		    set _size 2
+		    binary scan $tb_bytes "@${_ptr}${type}" value
+		    set sf [$sobj cget -scalefactor]
+		    set finalvalue [expr {($value & $mask)  * $sf}]
+		}
+		acc {
+		    set type "I"
+		    set mask "0x0ffffffff"
+		    set _size 4
+		    binary scan $tb_bytes "@${_ptr}${type}" value
+		    set sf [$sobj cget -scalefactor]
+		    set finalvalue [expr {($value & $mask)  * $sf}]
+		}
+		updates {
+		    set type "I"
+		    set mask "0x0ffffffff"
+		    set _size 4
+		    binary scan $tb_bytes "@${_ptr}${type}" value
+		    #Convert to unsigned
+		    set finalvalue [expr {$value & $mask}]
+		}
+		test {
+		    set type "S"
+		    set mask "0x0ffff"
+		    set _size 2
+		    binary scan $tb_bytes "@${_ptr}${type}" value
+		    set finalvalue $value
+		}
+		rcnt {
+		    set type "I"
+		    set mask "0x0ffffffff"
+		    set _size 4
+		    binary scan $tb_bytes "@${_ptr}${type}" value
+		    #Convert to unsigned
+		    set finalvalue [expr {$value & $mask}]
+		}
+		default {return -code error "Unknown sensor field $f"}
+	    }
+	    
+	    lappend _entry $finalvalue
+	    
+	    incr _ptr $_size
+	}
+
+	# Read parameters
+	foreach sobj $tb_parm_list {
+	    set _bytes_n [$sobj cget -bytecount]
+	    binary scan $tb_bytes "@${_ptr}a${_bytes_n}" _raw_bytes
+	    set _nicevalue [$sobj parse $_raw_bytes]
+
+	    lappend _entry $_nicevalue
+	    incr _ptr $_bytes_n
+	}
+
+	# Read SCOMS
+
+	#set type "W"
+	#set mask "0xffffffffffffffff"
+	set _size 8
+	foreach t $tb_scom_list {
+	    for {set _sock 0} {$_sock < $_sock_count} {incr _sock} {
+		binary scan $tb_bytes "@${_ptr}H16" value
+		#Present as ASCII hex
+		#set finalvalue [expr $value & $mask]
+		lappend _entry $value
+		incr _ptr $_size
+	    }
+	}
+
+	lappend tb_entries $_entry
+	
+	#check pointer is OK.
+	if {$_ptr != $_ptr_next} {
+	    ::amesterdebug::debug 1 "$this: ptr=$_ptr but should be $_ptr_next"
+	    return ""
+	}
+	
+    }
+}
+
+body tracebuffer_2_23::get_all_entries {} {
+    #get current config
+    get_config
+    #download bytes
+    set t [time {download}]
+    ::amesterdebug::debug tb "Download: $t"
+    #parse the bytes into entries
+    set t [time {parse}]
+    ::amesterdebug::debug tb "Parse: $t"
+    return $tb_entries 
+}
+
+body tracebuffer_2_23::get_bytes {} {
+    #get current config
+    get_config
+    #download bytes
+    download
+    return $tb_bytes
+}
+
+body tracebuffer_2_23::load_from_file {filename} {
+    # Fix the tb_write and tb_bytes fields in the trace to be correct.
+    # Assume all other fields are set by a previous configure
+    if {[catch {set file [open $filename r]}]} {
+	puts stderr "Cannot open file $filename"
+	return
+    }
+    fconfigure $file -translation binary
+    set _size [file size $filename]
+    set tb_write [expr $_size / $tb_entry_size]
+    puts "setting tb_write to $tb_write"
+    set tb_bytes [::read $file]
+    close $file
+
+}

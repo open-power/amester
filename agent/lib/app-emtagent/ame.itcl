@@ -1,0 +1,119 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+class ame {
+    public proc init_ame_objects {hostobj}
+
+}
+
+
+#
+# Find all AME Components in the host, initialize them, and return a list of them.
+#
+
+proc ame::init_ame_objects {host} {
+    set min_ame_api_major 2
+    set min_ame_api_minor 8
+
+    # Update this when supported API level changes
+    set max_ame_api_major 2
+    #set max_ame_api_minor 15
+    # Changed by Sibi - 06/08/07
+    set max_ame_api_minor 16
+
+    set ameclist ""
+    set ameapimajor 0
+    set ameapiminor 0
+
+    if {[catch {set result [$host ipmi_send_sync 20 00 00 06 01 {}]} errmsg]} {
+	# API command didn't work
+	puts "Error while determining AME firmware level: $errmsg"
+	puts "Can't send IPMI command to $host. No IPMI support?"
+	return
+    } else {
+	set status [lindex $result 0]
+	if {$status!=0} {
+	    puts "error: status of IPMI 06 01 = $status"
+	    return
+	}
+    }	
+
+    # Get AME API version from host
+    if {[catch {set result [$host ipmi_send_sync 20 00 00 3a 3c [binary format "c" 10]]} errmsg]} {
+	# API command didn't work
+	puts "Error while determining AME firmware level: $errmsg"
+    } else {
+	set status [lindex $result 0]
+	if {$status != 0} {
+	    puts "api status = $status"
+	    set ameapimajor 0
+	    set ameapiminor 0
+	} else {
+	    set databytes [lindex $result 1]
+	    binary scan $databytes "H*" all
+	    #puts "api bytes = $all"
+	    binary scan $databytes "cc" ameapimajor ameapiminor
+	}
+    }
+
+    if {$ameapimajor == 0} {
+	puts "Could not detect AME firmware on $host"
+	return
+    }
+
+
+    #Set num_amecs to number of AME Components on the host. 
+    #For now, we only support 1.
+    set num_amecs 1
+    for {set i 0} {$i < $num_amecs} {incr i} {
+	set amefw {}
+
+	if {[catch {
+
+	    # NOTE: default case takes care of exact match, too high,
+	    # and too low. Numbered cases take care of inbetween
+	    # missing API levels.
+
+	    switch "${ameapimajor}.${ameapiminor}" {
+		
+		2.9 {
+		    puts "This version of Amester does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Will try to use previous version 2.8 for $host"
+		    debug 1 "This version of Amester does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Will try to use previous version 2.8 for $host"
+		    set amefw [ame_2_8 ::${host}_ame${i} $host]
+		}
+		2.10 {
+		    puts "This version of Amester does not support AME Firmware ${ameapimajor}.${ameapiminor}.  Will try to use previous version 2.8 for $host"
+		    debug 1 "This version of Amester does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Will try to use previous version 2.8 for $host"
+		    set amefw [ame_2_8 ::${host}_ame${i} $host]
+		}
+		2.11 {
+		    puts "This version of Amester does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Will try to use previous version 2.8 for $host"
+		    debug 1 "This version of Amester does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Will try to use previous version 2.8 for $host"
+		    set amefw [ame_2_8 ::${host}_ame${i} $host]
+		}
+
+		default {
+		    if {$ameapimajor < $min_ame_api_major || ($ameapimajor==$min_ame_api_major && $ameapiminor < $min_ame_api_minor)} {
+			puts "This version of Amester does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Skipping $host"
+			debug 1 "This version of Amester does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Skipping $host"
+		    } elseif {$ameapimajor > $max_ame_api_major || ($ameapimajor==$max_ame_api_major && $ameapiminor > $max_ame_api_minor)} {
+			puts "This version of Amester does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Will try to use previous version ${max_ame_api_major}.${max_ame_api_minor} for $host"
+			debug 1 "This version of Amester does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Will try to use previous version ${max_ame_api_major}.${max_ame_api_minor} for $host"
+			set amefw [ame_${max_ame_api_major}_${max_ame_api_minor} ::${host}_ame${i} $host]
+		    } else {
+			# We must exactly match a known API level
+			set amefw [ame_${ameapimajor}_${ameapiminor} ::${host}_ame${i} $host]
+		    }
+		}
+		
+	    }
+	} result]} { 
+	    bgerror "can't connect to AME firmware with API ${ameapimajor}.${ameapiminor} for $host"
+	} else {
+	    lappend ameclist $amefw
+	}
+	
+    }
+    return $ameclist
+}

@@ -1,0 +1,1295 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+
+#--------------------------------------------------------------------
+#
+# BladeCenter procedures
+#
+#--------------------------------------------------------------------
+if {$::options(gui)} {
+    .mbar.file.menu.connect add command -label "BladeCenter..." -command "bcconnect \#auto"
+}
+
+ 
+class bcconnect {
+    public variable name "mybc"
+    public variable addr ""
+    public variable userid "USERID"
+    public variable password "PASSW0RD"
+    public variable port 6090
+    public variable slotmask {1 2 3 4 5 6 7 8 9 10 11 12 13 14}
+    public variable close 1
+    public variable window ""
+
+    public method make_gui {}
+    public method connect {}
+
+    constructor args {
+	if {$::options(gui)} {make_gui}
+    }
+
+    destructor {
+	#delete GUI
+	if {$window ne ""} {
+	    destroy $window
+	}
+    }
+
+}
+
+body bcconnect::make_gui {} {
+
+    if {[winfo exists $window]} {
+	focus $window
+	raise $window
+	wm deiconify $window
+	return
+    }
+
+    regsub -all "::" .bcconnect_$this "" window
+
+    toplevel $window
+    wm title $window "Connect to BladeCenter"
+    
+    label $window.name_l -text "Name of BladeCenter" -anchor w
+    entry $window.name -textvariable [scope name]
+    grid $window.name_l $window.name -sticky news -row 0
+
+    label $window.addr_l -text "IP address" -anchor w
+    entry $window.addr -textvariable [scope addr]
+    grid $window.addr_l $window.addr -sticky news -row 1
+
+    label $window.userid_l -text "User ID" -anchor w
+    entry $window.userid -textvariable [scope userid]
+    grid $window.userid_l $window.userid -sticky news -row 2
+
+    label $window.password_l -text "Password" -anchor w
+    entry $window.password -textvariable [scope password]
+    grid $window.password_l $window.password -sticky news -row 3
+
+    label $window.slotmask_l -text "Slots" -anchor w
+    entry $window.slotmask -textvariable [scope slotmask] -width [string length $slotmask]
+    grid $window.slotmask_l $window.slotmask -sticky news -row 4
+
+    checkbutton $window.close -text "Close this window after connecting" -variable [scope close]
+    grid $window.close -row 6 -sticky w
+
+    button $window.connect -text "Connect" -command [code $this connect] -background lightblue
+    grid $window.connect -row 8 -sticky news
+}
+
+body bcconnect::connect {} {
+    set obj ""
+    set result ""
+    catch {$window.connect configure -state disabled}
+    if {[catch {set obj [bc ::$name -addr $addr -userid $userid -password $password -slotmask $slotmask]} result]} {
+	puts "There was an error connecting bc: result = $result"
+	bgerror $result
+    } else {
+	if {![$obj isa bc]} {
+	    puts "There was an error connecting bc: obj= $obj"
+	} elseif {$close} {delete object $this}
+    }
+    catch {$window.connect configure -state normal}
+}
+
+
+class bc {
+
+    #Parameters
+    public variable name ""
+    public variable addr ""
+    public variable userid "USERID"
+    public variable password "PASSW0RD"
+    public variable port 6090
+    public variable slotmask {1 2 3 4 5 6 7 8 9 10 11 12 13 14}
+
+    protected variable chassistype ""
+    protected variable chassissubtype ""
+    protected variable powerdomaincount 0
+
+    #cmdcheck=1 means check each dotcmd is legal before sending to BC
+    public variable cmdcheck 0
+    #bladeobjs is a list of blades in bladecenter (subset of slotmask)
+    protected variable bladeobjs {}
+    #array of slot number to bladeobj
+    protected variable slot2bladeobj
+    #dotcmd_is_valid if dotcmd hash entry exists, then command is valid.
+    protected variable dotcmd_is_valid
+
+    constructor {args} {
+	::amesterdebug::debug bc "bc constructor"
+	#init name to object name (can be overridden by arg)
+	regsub -all "::" $this "" name
+	eval configure $args
+	if {$addr eq ""} {
+	    return -code error "Missing a required parameter, -addr <IP address>"
+	}
+
+	# Check BC commands.  Not done until cmd {1 1} is issued
+
+	if {$::options(gui)} {make_gui}
+
+	# Try opening a connection
+	net_open
+	if {$net_status != "connected"} {
+	    if {$::options(gui)} {
+		host_window_delete $name
+		host_window_remove_host $name
+	    }
+	    error "cannot connect to $name"
+	}
+	net_health
+
+	# Get the commands valid for this bc
+	cmd_table_sync
+	# Get chassis type
+	chassis_topology_discovery_sync
+	# Find installed blades
+	chassis_status_sync
+	# Find power domains
+	power_domain_count_sync
+
+    }
+    
+    destructor {
+
+	# Cancel any pending afters
+	after cancel $net_health_after
+	#delete GUI associated with BC
+	if {$::options(gui)} {
+	    host_window_delete $name
+	    host_window_remove_host $name
+	}
+    }
+
+    public method make_gui {}
+    public method add_blade {slot}
+
+    public method cmd_table {{callback {}}}
+    public method cmd_table_sync {}
+    private method cmd_table_callback { status databytes}
+    public method chassis_topology_discovery { {callback {}}}
+    public method chassis_topology_discovery_sync { {callback {}}}
+    private method chassis_topology_discovery_callback { status databytes}
+    public method chassis_status { {callback {}}}
+    public method chassis_status_sync {}
+    private method chassis_status_callback { status databytes}
+
+    public method vpd_sync {slot start len}
+    protected method blade_type {slot}
+
+    public method power_domain_count { {callback {}}}
+    public method power_domain_count_sync {}
+    private method power_domain_count_callback { status databytes}
+
+    public method get_ambient_temp_sync {}
+
+    #Network connection
+    private variable sock 0
+    private variable net_status "disconnected"
+    private variable link "down"
+    private variable msgq {}
+    public variable net_health_period 3000
+    private variable net_health_after 0
+    public variable net_idle_count 0
+    public variable net_idle_threshold 30000
+
+    public variable ipmi_msg_send_count 0
+
+    #Define error messages for BladeCenter MM interface
+    #Reference: Service Processor Command Structure and Interface, Allen Parsons.
+    #
+    #
+    protected common if_err
+    protected common moduletype
+    protected common bcstatus
+    protected common bccmd
+
+    set if_err(0) "command passed"
+    set if_err(1) "command failed"
+    set if_err(2) "command unsupported"
+    set if_err(3) "command parameter invalid"
+    set if_err(4) "command failed access i2c device"
+    set if_err(5) "wrong amount of data passed"
+    set if_err(6) "device busy"
+    set if_err(7) "device not present, currently unavailable, or system does not support requested command"
+
+    set moduletype(0) "power module"
+    set moduletype(1) "processor blade"
+    set moduletype(2) "switch module"
+    set moduletype(3) "management module"
+    set moduletype(4) "fan module"
+    set moduletype(5) "media tray"
+    set moduletype(6) "midplane"
+
+    set bcstatus(0) "Passed"
+    set bcstatus(1) "Failed"
+    set bcstatus(2) "Unsupported"
+    set bcstatus(3) "Invalid"
+    set bcstatus(4) "I2C Error"
+    set bcstatus(5) "Data Length Miscompare"
+    set bcstatus(6) "Busy"
+    set bcstatus(7) "Device not available"
+    
+    set bccmd(0) "Write"
+    set bccmd(1) "Write Next"
+    set bccmd(2) "Read"
+    set bccmd(3) "Read Next"
+    set bccmd(4) "Command Response"
+    set bccmd(5) "Event"
+    set bccmd(6) "Command for Device Driver"
+    
+    public method net_health {}
+    public method net_open {}
+    public method net_close {}
+    public method net_write_msg {}
+    private method net_process_msg {}
+    private method net_print_msg {msg}
+    private method net_msg_timeout {tag}
+    public method net_send_msg {msg {tag {}} {callback {}} {priority 1} {timeout {10000}} {position end}}
+    public method net_keep_alive {}
+
+    public method send {type cmd databytes {callback {}} {priority 1}} 
+    public method send_sync {type cmd databytes {priority 1}}
+    private method send_sync_callback {uid status databytes}
+    private method send_sync_callback_error {uid}
+
+    public method ipmi_send {slot addr chan lun netfn cmd data {callback {}} {priority 1}}
+    public method ipmi_send_sync {slot addr chan lun netfn cmd data {priority 1}}
+
+    public method ambient {{callback {}}}
+    private method ambient_callback {status databytes}
+
+    public method fan {fan {callback {}}}
+    private method fan_callback {fan status databytes}
+
+    public method power_domain_load {domain {callback {}}}
+    private method power_domain_load_callback {domain status databytes}
+
+    public method power_domain_module_list {domain {callback {}}}
+    public method power_domain_module_list_callback {domain status databytes}
+
+    private method generic_callback {status cmdbytes databytes}
+
+    public method get {what args}
+}
+
+# This is for compatibility with older scripts that used bc_create
+interp alias {} ::bc_create {} ::bc
+
+#
+# bc methods
+#
+
+body bc::make_gui {} {
+    host_window_add_host $name
+    host_window_add $name name [label .host.c.f.${name}_name -textvariable [scope name] -anchor w -font $::fixedfont] name
+    host_window_add $name addr [label .host.c.f.${name}_addr -textvariable [scope addr] -anchor w -font $::fixedfont] addr
+    host_window_add $name status [label .host.c.f.${name}_status -textvariable [scope net_status] -anchor w -font $::fixedfont] status
+    host_window_add $name link [label .host.c.f.${name}_link -textvariable [scope link] -anchor w -font $::fixedfont] link
+    host_window_update a b c
+
+}
+
+body bc::vpd_sync {slot start length} {
+    set type 2
+    set mtype 1
+    set cmd {4 3 5 5}
+    #set hexslot [format "%02X" $slot]
+    set databytes [binary format "ccss" $mtype $slot $start $length]
+    #binary scan $databytes "H*" bytes
+    #puts "vpd_sync cmd = $bytes"
+    set result [send_sync $type $cmd $databytes]
+    # [lindex $result 0] [lindex $result 1]
+    return $result 
+}
+
+body bc::cmd_table { {callback {}}} {
+    set type 2
+    set cmd {1 1}
+    set databytes {}
+    if {$callback eq {}} {
+	set callback {cmd_table_callback $status $databytes}
+    }
+    send $type $cmd $databytes $callback $::priority_cmd
+}
+
+body bc::cmd_table_sync {} {
+    set type 2
+    set cmd {1 1}
+    set databytes {}
+    set result [send_sync $type $cmd $databytes]
+    cmd_table_callback [lindex $result 0] [lindex $result 1]
+}
+
+body bc::cmd_table_callback {status databytes} {
+    set i 0
+    set databytes_len [string length $databytes]
+    #binary scan $databytes "H*" all
+    #puts "got $databytes_len bytes = $all"
+    while {$i < $databytes_len} {
+	binary scan $databytes "@${i}c" xx
+	incr i
+	set count [expr $xx & 0x1f]
+	if {$xx & 0x80} {
+	    set seq 1
+	} else {
+	    set seq 0
+	}
+	binary scan $databytes "@${i}c${count}" bytes
+	incr i $count
+	set cmd {}
+	foreach c $bytes {
+	    lappend cmd [expr 0x0ff & $c]
+	}
+	if {$seq} {
+	    set last [lindex $cmd end]
+	    set end [expr $count - 2]
+	    for {set j 1} {$j <= $last} {incr j} {
+		set dotcmd "[lrange $cmd 0 $end] $j"
+	    }
+	} else {
+	    set dotcmd $cmd
+	}
+	::amesterdebug::debug bc $dotcmd
+	# set this as a valid command for the bladecenter
+	set dotcmd_is_valid($dotcmd) 1
+    }
+}
+
+body bc::chassis_status {{callback {}}} {
+    set type 2
+    set cmd {2 5 2 1 1}
+    set databytes {}
+    if {$callback eq {}} {
+	set callback {chassis_status_callback $status $databytes}
+    }
+    send $type $cmd $databytes $callback $::priority_cmd
+}
+
+body bc::chassis_status_sync {} {
+    set type 2
+    set cmd {2 5 2 1 1}
+    set databytes {}
+    set result [send_sync $type $cmd $databytes $::priority_cmd]
+    chassis_status_callback [lindex $result 0] [lindex $result 1]
+}
+
+body bc::chassis_status_callback {status databytes} {
+    binary scan $databytes "H*" all
+    ::amesterdebug::debug bc "bc_chassis_status: bytes = $all"
+
+    binary scan $databytes "issccccss" b03 b45 b67 b8 b9 b10 b11 b1213 b1415
+
+    set bladeobjs {}
+    # Find blades and start data collection
+    for {set i 1} {$i <= 14} {incr i} {
+	if {(1<<($i-1)) & $b45} {
+	    ::amesterdebug::debug bc "bc $name: blade $i is inserted"
+	    if {[lsearch -exact $slotmask $i] == -1} {
+		#ignore this blade
+		continue
+	    }
+
+	    add_blade $i
+	}
+    }
+
+    for {set i 1} {$i <= 14} {incr i} {
+	if {(1<<($i-1)) & $b67} {
+	    ::amesterdebug::debug bc "bc $name: blade $i is communicating"
+	}
+    }
+    if {$b8 & 0x01} {
+	::amesterdebug::debug bc "bc $name: fan 1 installed"
+    }
+    if {$b8 & 0x02} {
+	::amesterdebug::debug bc "bc $name: fan 2 installed"
+    }
+    if {$b8 & 0x80} {
+	::amesterdebug::debug bc "bc $name: media tray installed"
+    }
+    if {$b9 & 0x01} {
+	::amesterdebug::debug bc "bc $name: fan 1 functional"
+    }
+    if {$b9 & 0x02} {
+	::amesterdebug::debug bc "bc $name: fan 2 functional"
+    }
+    if {$b9 & 0x80} {
+	::amesterdebug::debug bc "bc $name: media tray communicating"
+    }
+    if {$b10 & 0x01} {
+	::amesterdebug::debug bc "bc $name: power module 1 installed"
+    }
+    if {$b10 & 0x02} {
+	::amesterdebug::debug bc "bc $name: power module 2 installed"
+    }
+    if {$b10 & 0x04} {
+	::amesterdebug::debug bc "bc $name: power module 3 installed"
+    }
+    if {$b10 & 0x08} {
+	::amesterdebug::debug bc "bc $name: power module 4 installed"
+    }
+    if {$b11 & 0x01} {
+	::amesterdebug::debug bc "bc $name: power module 1 functional"
+    }
+    if {$b11 & 0x02} {
+	::amesterdebug::debug bc "bc $name: power module 2 functional"
+    }
+    if {$b11 & 0x04} {
+	::amesterdebug::debug bc "bc $name: power module 3 functional"
+    }
+    if {$b11 & 0x08} {
+	::amesterdebug::debug bc "bc $name: power module 4 functional"
+    }
+    for {set i 0} {$i <= 15} {incr i} {
+	if {(1<<($i)) & $b1213} {
+	    ::amesterdebug::debug bc "bc $name: switch [expr $i+1] is installed"
+	}
+    }
+    for {set i 0} {$i <= 15} {incr i} {
+	if {(1<<($i)) & $b1415} {
+	    ::amesterdebug::debug bc "bc $name: switch [expr $i+1] is communicating"
+	}
+    }
+}
+
+body bc::chassis_topology_discovery {{callback {}}} {
+    set type 2
+    set cmd {4 5 9}
+    set databytes {}
+    if {$callback eq {}} {
+	set callback "[code $this chassis_topology_discovery_callback] \$status \$databytes"
+    }
+    send $type $cmd $databytes $callback $::priority_cmd
+}
+
+body bc::chassis_topology_discovery_sync {{callback {}}} {
+    set type 2
+    set cmd {4 5 9}
+    set databytes {}
+    set result [send_sync $type $cmd $databytes $::priority_cmd]
+    chassis_topology_discovery_callback [lindex $result 0] [lindex $result 1]
+}
+
+body bc::chassis_topology_discovery_callback {status databytes} {
+    if {$status == 0} {
+	binary scan $databytes "cc" version flags
+	if {$version == 1} {
+	    set chassistype enterprise
+	    set chassissubtype bc1
+	} else {
+	    ::amesterdebug::debug warn "Add code to bc_chassis_topology_discovery for version=$version"
+	    set chassistype unknown
+	    set chassissubtype unknown
+	}
+	::amesterdebug::debug bc "Chassis type is $chassistype $chassissubtype"
+    } else {
+	::amesterdebug::debug bc "bc_chassis_discover_topology status was $status"
+	return -code error "Something is wrong status=$status"
+    }
+}
+
+body bc::power_domain_count {{callback {}}} {
+    set type 2
+    set cmd {15 5 11}
+    set databytes {}
+    if {$callback eq {}} {
+	set callback "[code $this power_domain_count_callback] \$status \$databytes"
+    }
+    send $type $cmd $databytes $callback $::priority_cmd
+}
+
+body bc::power_domain_count_sync {} {
+    set type 2
+    set cmd {15 5 11}
+    set databytes {}
+    set result [send_sync $type $cmd $databytes $::priority_cmd]
+    power_domain_count_callback [lindex $result 0] [lindex $result 1]   
+}
+
+body bc::power_domain_count_callback {status databytes} {
+    if {[binary scan $databytes "c" cnt]} {
+	set powerdomaincount $cnt
+	::amesterdebug::debug bc "Found $cnt power domains"
+    } else {
+	return -code error
+    }
+
+    for {set i 1} {$i <= $cnt} {incr i} {
+	power_domain_load $i
+    }
+}
+
+body bc::get_ambient_temp_sync {} {
+    #Return ambient temperature in degrees C
+    set results [send_sync 2 {2 1 5 1} {} $::priority_cmd]
+    if {[lindex $results 0] == 0} {
+	binary scan [lindex $results 1] "s" temp
+	return [expr $temp / 100.0]
+    } else {
+	return 0
+    }
+}
+
+body bc::add_blade {slot} {
+    if {[info exists slot2bladeobj($slot)]} {
+	#blade already has been created
+	return
+    }
+    set bladename [format "slot%02i" $slot]
+    ::amesterdebug::debug bc "CREATING $bladename in namespace [namespace current] obj = $this"
+    set result {}
+    
+    if {![catch {set b [blade ::${name}_${bladename} -bc $name -slot $slot]} result]} {
+	set slot2bladeobj($slot) $b
+	lappend bladeobjs $b
+	#Add blade to slotmask if it is not already there
+	if {[lsearch -exact $slotmask $slot] == -1} {
+	    lappend slotmask $slot
+	}
+
+    } else {
+	::amesterdebug::debug 1 "ERROR $result : ignoring blade in slot $slot."
+	bgerror $result
+    }
+    ::amesterdebug::debug bc "DONE $bladename"
+}
+
+
+#--------------------------------------------------------------------
+#
+# BC network functions
+#
+#--------------------------------------------------------------------
+
+#
+# Keep BC connection alive by periodically injecting a command.
+# Command is for getting power domains. (Probablby not best to use
+# -- FIXME: need to find a general command that is appropriate)
+#
+body bc::net_keep_alive {} {
+    set type 2
+    set cmd {15 5 11}
+    set databytes {}
+    send $type $cmd $databytes {} $::priority_data
+}
+
+
+#
+# Wakeup every $net_health_period and check the status of the BC.
+#
+body bc::net_health {} {
+    ::amesterdebug::debug health "bcnet_health $name $net_status"
+
+    # reschedule
+    #::amesterdebug::debug bcnet "  cancel $net_health_after"
+    after cancel $net_health_after
+    if {$net_health_period} {
+	set net_health_after [after $net_health_period [code $this net_health]]
+	#::amesterdebug::debug bcnet "  create after $net_health_after"
+	#foreach timer [after info] {
+	    #::amesterdebug::debug bcnet "     exists $timer [after info $timer] "
+	#}
+    } else {
+	return
+    }
+
+    switch -- $net_status {
+	"disconnected" {
+	    net_open
+	}
+	"opening" {
+	    #::amesterdebug::debug bcnet "bcnet_health $name opening"
+	}
+	"connected" {
+	    if {[llength $msgq] > 0} {
+		net_write_msg
+	    } else {
+		incr net_idle_count $net_health_period
+		if {$net_idle_count > $net_idle_threshold} {
+		    net_keep_alive
+		}
+	    }
+	}
+	"timeout" {
+	    # disconnect
+	    net_close
+	}
+	"error" {
+	    net_close
+	}
+	"closed" {
+	    # Try to re-open host
+	    net_open
+	}
+	default {
+	    ::amesterdebug::debug health "Error: undefined status $net_status for $name"
+	}
+    }
+}
+
+# Open connection to BladeCenter synchronously.
+#
+# While most communication in Amester is asynchronous, we open the host connections in a syncronous manner because it is easier to ::amesterdebug::debug and because we usually only open the host once.
+body bc::net_open {} {
+    ::amesterdebug::debug bcnet "open $this"
+    if {!$::network} {return}
+    if {$sock != 0} {return} ;# already has a socket
+
+    if {[catch {set sock [socket $addr $port]} result]} {
+	::amesterdebug::debug bcnet "ERROR: while opening $name result=$result"
+	return
+    }
+
+    ::amesterdebug::debug bcnet "open $this sock = $sock"
+
+    #Init all the socket's variables
+    set ::netsockinfo($sock,name) $name
+
+    #init sock
+    set net_status "opening"
+    fconfigure $sock -buffering none -blocking yes -translation binary
+
+    # Attempt login
+    set user "SPREMOTE$userid"
+    set useridstr [binary format "a*c" $user 0]
+    binary scan $useridstr "H*" all
+    ::amesterdebug::debug bcpw "bcpw useridstr is $all"
+    set passwordstr ""
+
+    ::amesterdebug::debug bcnet "  writing userid string"
+    # NOTE: need -nonewline on puts so that LF is not appened. Maybe fconfigure can fix this more permanently for the socket.
+    puts -nonewline $sock $useridstr
+    ::amesterdebug::debug bcnet "  waiting for 2 bytes "
+
+    if {[catch {eof $sock} result] || [catch {set line [read $sock 2 ]}]} {
+	::amesterdebug::debug bcnet "$this net_open: something wrong with sock $sock."
+	net_close
+	return
+    }
+    binary scan $line "H*" all
+    ::amesterdebug::debug bcnet "   result is $all"
+    #binary scan $line "a*" all
+    #puts "result is $all"
+
+    binary scan $line "cc" key0 key1
+
+    if {![info exists key0]} {
+	#Something is wrong. Perhaps MM closed connection.
+	puts stderr "$this net_open: didn't get key from BladeCenter"
+	net_close
+	return
+    }
+
+    set key0 [expr $key0 & 0x0ff]
+    set key1 [expr $key1 & 0x0ff]
+    #puts [format "key0 = %02x, key1=%02x" $key0 $key1]
+    #binary scan $::bc($name,password) "H*" all
+    #puts "pw is $all"
+    for {set l 0} {$l<[string length $password]} {incr l} {
+	set char [string index $password $l]
+	#puts "converting letter $char"
+	binary scan $char "c" c
+	set t [expr ($c ^ $key0) + $key1]
+	set t [expr $t & 0x0ff]
+	#puts [format "t = %02x" $t]
+	set passwordstr [binary format "a*c" $passwordstr $t]
+	#binary scan $passwordstr "H*" all
+	#puts "pass is $all"
+    }
+
+    set passwordstr [binary format "a*c" $passwordstr 0]
+
+    #binary scan $passwordstr "H*" all
+    #puts "pass is $all"
+
+    puts -nonewline $sock $passwordstr
+
+    # YOUAREIN\0 and BADLOGIN\0 are both 9 characters
+    if {[catch {eof $sock} result] || [catch {set line [read $sock 9]}]} {
+	puts stderr "$this net_open: didn't get 9 chars. something wrong with sock $sock"
+	::amesterdebug::debug bcnet "$this net_open: didn't get 9 chars. something wrong with sock $sock"
+	net_close
+	return
+    }
+    #puts "mm sent $line"
+
+    if {[string match "YOUAREIN?" $line]} {
+	::amesterdebug::debug login "Login success"
+    } else {
+	puts stderr "$this: Login fail.  Check $userid works to BladeCenter management module web interface and that AEM can connect using this ID (to check permissions are correct)."
+	::amesterdebug::debug login "Login fail"
+	net_close
+	return
+    }
+
+    ::amesterdebug::debug bcnet "$this Connection successful"
+
+    # Login successful
+    set net_status "connected"
+    set link "up"
+    fileevent $sock w {}
+    fileevent $sock r [code $this net_process_msg]
+
+    # if there are pending messages, start sending them.
+    if {[llength $msgq]} {
+	net_write_msg
+    }
+
+    return 0
+}
+
+
+body bc::net_close {} {
+    ::amesterdebug::debug bcnet "$name net_close sock=$sock"
+    #Attempt to close. May already be closed, so catch result.
+    set code [catch {close $sock}]
+    ::amesterdebug::debug bcnet "  close $sock with code $code"
+    set net_status "closed"
+    set link "down"
+
+    if {$sock == 0} {
+	::amesterdebug::debug bcnet "$this net_close hmm. sock was 0"
+	return
+    }
+
+    ::amesterdebug::debug bcnet "$this net_close msgq length was [llength $msgq]"
+
+    #Delete timers
+    foreach timer [array names ::bcnetsockcallback $sock,*,after] {
+	after cancel $::bcnetsockcallback($timer)
+    }
+
+    # remove storage for this sock and repost all callback messages
+    foreach index [array names ::bcnetsockcallback $sock,*,tag] {
+	set tag $::bcnetsockcallback($index)
+	#Get message that failed
+	set msg $::bcnetsockcallback($sock,$tag,msg)
+	set callback $::bcnetsockcallback($sock,$tag,callback)
+	set timeout $::bcnetsockcallback($sock,$tag,timeout)
+	set priority $::bcnetsockcallback($sock,$tag,priority)
+	#Clear bcnetsockcallback
+	::amesterdebug::debug bcnet "$this net_close clear bcnetsockcallback"
+	array unset ::bcnetsockcallback "$sock,$tag,*"
+	#Sending message will also reopen the connection
+	::amesterdebug::debug bcnet "reposting: tag=$tag msg=[net_print_msg $msg] callback=$callback"
+	net_send_msg $msg $tag $callback $priority $timeout 0
+    }
+    ::amesterdebug::debug bcnet "$this net_close msgq length is now [llength $msgq]"
+    array unset ::netsockinfo $sock,*
+    set sock 0
+}
+
+body bc::net_msg_timeout {tag} {
+    ::amesterdebug::debug bcnet "bcnet_msg_timeout $name"
+    net_close
+    return
+}
+
+# Pretty print BC message for debugging
+body bc::net_print_msg {msg} {
+    binary scan $msg "H*" hexmsg
+    return $hexmsg
+}
+
+
+# Get next message on queue and actually send it to the host
+# Set timeout for it
+body bc::net_write_msg {} {
+    ::amesterdebug::debug bcnet "$this net_write_msg"
+    if {!$::network} {
+	::amesterdebug::debug bcnet "net_write_msg: no network"
+	return
+    }
+    if {![llength $msgq]} {
+	::amesterdebug::debug bcnet "net_write_msg: nothing in msgq"
+	return
+    }    
+    if {$net_status ne "connected"} {
+	::amesterdebug::debug bcnet "net_write_msg: not connected ($net_status)"
+	return
+    }
+
+    # sort message queue by priority
+    # note: messages of the same priority remain in the same order.
+    #   Therefore, inserting into the front or end of the msgq will add the
+    #   message at the beginning or end of messages with the same priority.
+    # 
+    set msgq [lsort -integer -index 0 $msgq]
+
+    set item [lindex $msgq 0]
+    set priority [lindex $item 0]
+    set tag [lindex $item 1]
+    set callback [lindex $item 2]
+    set timeout [lindex $item 3]
+    set msg [lindex $item 4]
+
+    ::amesterdebug::debug bcnet "net_write_msg sock=$sock tag=$tag"
+    ::amesterdebug::debug bcnet "net_write_msg bcnetsockcallback = [array names ::bcnetsockcallback]"
+
+    if {[info exists ::bcnetsockcallback($sock,$tag,msg)]} {
+	#There is already a message with the same tag.
+	#Must wait until it finishes before posting this message
+	#(Will try again when current message finishes)
+	::amesterdebug::debug bcnet "Message on sock=$sock pending with same tag=$tag"
+	::amesterdebug::debug bcnet "  message = [net_print_msg $msg]"
+	return
+    } else {
+	::amesterdebug::debug bcnet "bcnetsockcallback is clear, so write into it"
+    }
+
+    binary scan $msg "H*" hexmsg
+    ::amesterdebug::debug bcnet "bcnet_write_msg: tag=$tag timeout=$timeout msg=$hexmsg"
+    set ::bcnetsockcallback($sock,$tag,tag) $tag
+    set ::bcnetsockcallback($sock,$tag,msg) $msg
+    set ::bcnetsockcallback($sock,$tag,callback) $callback
+    set ::bcnetsockcallback($sock,$tag,timeout) $timeout
+    set ::bcnetsockcallback($sock,$tag,priority) $priority
+
+    set msgq [lreplace $msgq 0 0]
+    #::amesterdebug::debug bcnet "sending $sockinfo($sock,name): $msg"
+    
+    if {[catch {eof $sock} result] || [catch {puts -nonewline $sock $msg} result]} {
+	::amesterdebug::debug bcnet "we closed $name while in bcnet_host_write_msg (msg=[net_print_msg $msg]) result=$result"
+	net_close
+    } else {
+	#::amesterdebug::debug "$this sent $msg"
+	if {$timeout != 0} {
+	    set ::bcnetsockcallback($sock,$tag,after) [after $timeout [code $this net_msg_timeout $tag]]
+	    ::amesterdebug::debug bcnet "after set $::bcnetsockcallback($sock,$tag,after) for bcnet_msg_timeout"
+	}
+    }
+
+    #Reset idle counter to 0 since a message was just sent and we don't
+    #need to send a keep alive command for a while.
+    set net_idle_count 0
+}
+
+set ::priority_highest 0
+set ::priority_default 1
+set ::priority_cmd 2
+set ::priority_data 3
+
+# This is the lowest level of send.
+#
+# parameters must be lists. except name
+#   default timeout: 10 seconds
+#
+# position: where in queue to put message. 0 = first,  end = last
+#
+# Priority:
+#   0: highest
+#   1: default (user issued commands)
+#   2: all BC commands (set power budget)
+#   3: all BC data gathering (get 1ms power)
+body bc::net_send_msg {msg {tag {}} {callback {}} {priority 1} {timeout {10000}} {position end}} {
+    if {!$::network} {return}
+
+    ::amesterdebug::debug bcnet "bc::net_send_msg posting msg = [net_print_msg $msg] tag=$tag priority=$priority timeout=$timeout position=$position"
+    if {$tag eq {}} {
+	# tag is the BC name. Only one command can be sent at a time per BC.
+	set tag $name
+    }
+
+    set item [list $priority $tag $callback $timeout $msg]
+    set msgq [linsert $msgq $position $item ]
+
+    if {[llength $msgq] == 1} {
+	net_write_msg
+    }
+    ::amesterdebug::debug bcnet "$this net_send_msg msgq has [llength $msgq] items"
+}
+
+
+
+#
+# This procedure is called when a server sends a message to amester
+# 
+# The message is a list:
+# 1st word: the name of the command to which it is responding
+# remaining words: the response
+#
+body bc::net_process_msg {} {
+    if {$::pause} {return}
+    if {!$::network} {return}
+
+    ::amesterdebug::debug bcnet "bcnet_process_msg $name $sock"
+
+    set tag $name
+    
+    #important variables
+    #Number of items received in dot cmd response
+    set n {}
+    set type {}
+    set cmd_len {}
+    set databytes_len {}
+    set status {}
+    set reserved {}
+    set cmdbytes {}
+    set databytes {}
+
+    set formaterr 0
+    set bcclosed 0
+    set retry 0
+
+    if {[fconfigure $sock -error] ne ""} {
+	::amesterdebug::debug bcnet "$this bcnet_process_msg: there was an error on $sock for $name. Maybe it closed?"
+	net_close
+	return
+    }
+
+    # Get the first 6 bytes (not optional) of the message
+    if {[catch {eof $sock} result] || [catch {set line [read $sock 6]}]} {
+	::amesterdebug::debug bcnet "$this bcnet_process_msg: bc closed $name"
+	net_close $name
+	return
+    } 
+    set n [binary scan $line "c1c1s1c1c1" type cmd_len databytes_len status reserved]
+    if {$databytes_len ne {}} {
+	set databytes_len [expr $databytes_len & 0x0ffff]
+    }
+    set dbgmsg "type=$type cmd_len=$cmd_len data_len=$databytes_len status=$status reserved=$reserved"
+    ::amesterdebug::debug bcnet "$this dbgmsg:::: $dbgmsg"
+
+    # Get optional command field, if given
+    if {[catch {eof $sock} result] || [catch {set cmdbytes [read $sock $cmd_len]}]} {
+	#net_close
+	#::amesterdebug::debug bcnet "$this bcnet_process_msg: something wrong with sock $sock 2"
+	#return
+    }
+    binary scan $cmdbytes "H*" all
+    ::amesterdebug::debug bcnet "cmdbytes=$all"
+	
+    # Get optional data field, if given
+    if {[catch {eof $sock} result] || [catch {set databytes [read $sock $databytes_len]}]} {
+	net_close
+	::amesterdebug::debug bcnet "$this bcnet_process_msg: something wrong with sock $sock 3"
+	#return
+    }
+    binary scan $databytes "H*" all
+    ::amesterdebug::debug bcnet "$this databytes=$all"
+    
+    #Check if we have proper response format from MM to dot cmd.
+    if {$n != 5} {
+	if {$n == 0} {
+	    #BC closed connection
+	    #::amesterdebug::debug 1 "BC closed connection"
+	} else {
+	    #This is a serious error.  Just close the connection and try again.
+	    ::amesterdebug::debug 1 "$this bcnet_process_msg: there were only $n items read: $dbgmsg"
+	}
+	net_close
+	return
+    }
+
+    #Reponse format OK.  Check the contents of the response.
+    if {$status != 0} {
+	set dbgmsg "$this ERROR while processing blade message: $if_err($status) : $dbgmsg"
+
+	#device busy
+	if {$status == 6} {
+	    set retry 1
+	} else {
+	    set retry 0
+	}
+    } else {
+	#No error.  
+    }
+
+    if {$type > 6} {
+	::amesterdebug::debug 1 "$this --------- type = $type is not valid. closing connection"
+	net_close
+	return
+    }
+    
+
+
+    # If there is a callback, we always process it, unless the error was too severe.
+    if {$type==5} {
+	#unsolicited event
+	binary scan $cmdbytes "H*" cmd
+	binary scan $databytes "H*" data
+	::amesterdebug::debug 1 "$this ---------- Received event: $cmd=cmd data=$data"
+	return
+    }
+    
+    if {![info exists ::bcnetsockcallback($sock,$tag,callback)]} {
+	# Error: received reply without a message
+	::amesterdebug::debug 1 "$this ERROR: No message for this dot command reply: $dbgmsg"
+	net_write_msg
+	return
+    } else {
+	
+	set msg $::bcnetsockcallback($sock,$tag,msg)
+	set callback $::bcnetsockcallback($sock,$tag,callback)
+	set timeout $::bcnetsockcallback($sock,$tag,timeout)
+	
+	if {[info exists ::bcnetsockcallback($sock,$tag,after)]} {
+	    set after $::bcnetsockcallback($sock,$tag,after)
+	    after cancel $after
+	    ::amesterdebug::debug bcnet "cancel $after"
+	}
+
+	::amesterdebug::debug bcnet "$this process_msg clear bcnetsockcallback for $sock,$tag"
+	array unset ::bcnetsockcallback "$sock,$tag,*"
+
+	# Process callback, if any.
+	# NOTE: callback may use variables: name, status, databytes,
+	# tag, cmd, cmdbytes, msg after as parameters that will be
+	# filled in by the eval command.
+
+	# Note: if IPMI command failed at the dot command level, 
+	# then status will be non-zero and databytes will be an empty list
+
+	::amesterdebug::debug bcnet "$this bc process_msg callback=$callback"
+	if {[catch [list eval $callback] result]} {
+	    ::amesterdebug::debug 1 "ERROR while executing callback= $callback\n  result = $result"
+	}
+
+    }
+
+    # Send next message, if there is one
+    net_write_msg
+}
+
+
+
+
+# Low-level send command to BC MM
+#
+# byte length field
+# ---- ------ -----
+#    0      1 BMC Address
+#    1      1 BMC Channel
+#    2      1 LUN
+#    3      1 Net Function
+#    4      1 Command
+#    5      1 Data Length
+#    6      N Data (optional)
+body bc::send {type cmd databytes {callback {}} {priority 1}} {
+    if {$cmdcheck && ![info exists dotcmd_is_valid($cmd)]} {
+	set result "bc_send: error. cmd=$cmd not supported by $name"
+	::amesterdebug::debug bc $result
+	return -code error $result
+    }
+
+    set cmdbytes [binary format "c*" $cmd]
+    set cmd_len [string length $cmdbytes]
+    set databytes_len [string length $databytes]
+    set status 0
+    set reserved 0
+    set bytebuffer [binary format "c1c1s1c1c1a*a*" $type $cmd_len $databytes_len $status $reserved $cmdbytes $databytes]
+
+    net_send_msg $bytebuffer {} $callback $priority
+}
+
+# bc_send_sync
+#
+# This is a bc_send that waits for the result to return.
+body bc::send_sync {type cmd databytes {priority 1}} {
+    set myuid [uid_create]
+    if {$cmdcheck && ![info exists dotcmd_is_valid($cmd)]} {
+	set result "bc_send: error. cmd=$cmd not supported by $name"
+	::amesterdebug::debug bc $result
+	return -code error $result
+    }
+    set cmdbytes [binary format "c*" $cmd]
+    set cmd_len [string length $cmdbytes]
+    set databytes_len [string length $databytes]
+    set status 0
+    set reserved 0
+    set bytebuffer [binary format "c1c1s1c1c1a*a*" $type $cmd_len $databytes_len $status $reserved $cmdbytes $databytes]
+    set callback "send_sync_callback $myuid \$status \$databytes"
+    net_send_msg $bytebuffer {} $callback $priority
+    vwait ::bc_send_sync_wait_$myuid
+    unset ::bc_send_sync_wait_$myuid
+    set myname ::bc_send_sync_status_${myuid}
+    eval set status $$myname
+    set myname ::bc_send_sync_databytes_${myuid}
+    eval set databytes $$myname
+    unset ::bc_send_sync_status_$myuid
+    #unset ::bc_send_sync_cmdbytes_$myuid
+    unset ::bc_send_sync_databytes_$myuid
+    return [list $status $databytes]
+}
+
+body bc::send_sync_callback {uid status databytes} {
+    set ::bc_send_sync_status_$uid $status
+    set ::bc_send_sync_databytes_$uid $databytes
+    # Release whoever is waiting for this result
+    set ::bc_send_sync_wait_$uid 1    
+}
+
+body bc::send_sync_callback_error {uid} {
+    #Error in dot command, not IPMI command
+    set ::bc_send_sync_status_$uid {}
+    set ::bc_send_sync_databytes_$uid {}
+    set ::bc_send_sync_wait_$uid 1    
+}
+
+
+
+# Command to pass an IPMI command thru MM to blade
+#
+body bc::ipmi_send {slot addr chan lun netfn cmd data {callback {}} {priority 1}} {
+    if {[string length $addr] != 2 ||
+	[string length $chan] != 2 ||
+	[string length $lun] != 2 ||
+	[string length $netfn] != 2 ||
+	[string length $cmd] != 2 } {
+	return -code error "Parameters for addr, chan, lun, netfn, cmd, and data must have an even number of hexadecimal digits"
+    }
+    set type 0
+    set mmcmd {13 8 6}
+    set ipmidatalen [string length $data]
+    set databytes [binary format "cH2H2H2H2H2ca*" $slot $addr $chan $lun $netfn $cmd $ipmidatalen $data]
+    send $type $mmcmd $databytes $callback $priority
+    incr ipmi_msg_send_count
+}
+
+body bc::ipmi_send_sync {slot addr chan lun netfn cmd data {priority 1}} {
+    if {[string length $addr] != 2 ||
+	[string length $chan] != 2 ||
+	[string length $lun] != 2 ||
+	[string length $netfn] != 2 ||
+	[string length $cmd] != 2 } {
+	return -code error "Parameters for addr, chan, lun, netfn, cmd, and data must have an even number of hexadecimal digits"
+    }
+    set type 0
+    set mmcmd {13 8 6}
+    set ipmidatalen [string length $data]
+    set databytes [binary format "cH2H2H2H2H2ca*" $slot $addr $chan $lun $netfn $cmd $ipmidatalen $data]
+    incr ipmi_msg_send_count
+    return [send_sync $type $mmcmd $databytes $priority]
+}
+
+
+# Get ambient temperature
+#
+#
+body bc::ambient {{callback {}}} {
+    set type 2
+    set cmd [list 2 1 5 1]
+    set databytes {}
+    if {$callback eq {}} {
+	set callback "[code $this ambient_callback] \$status \$databytes"
+    }
+    send $type $cmd $databytes $callback $::priority_data
+}
+
+body bc::ambient_callback {status databytes} {
+    if {[binary scan $databytes "s" tempcC]} {
+	set tempC [expr $tempcC / 100.0]
+	puts "chassis ambient temp is $tempC C"
+    } else {
+	return -code error
+    }
+}
+
+
+
+# Get fan speed
+#
+#
+body bc::fan {fan {callback {}}} {
+    set type 2
+    set cmd [list 2 3 $fan]
+    set databytes {}
+    if {$callback eq {}} {
+	set callback "[code $this fan_callback $fan] \$status \$databytes"
+    }
+    send $type $cmd $databytes $callback $::priority_data
+}
+
+body bc::fan_callback {fan status databytes} {
+    if {[binary scan $databytes "c" speedpcnt]} {
+	puts "fan $fan is running at $speedpcnt %"
+    } else {
+	return -code error
+    }
+}
+
+body bc::power_domain_load {domain {callback {}}} {
+    set type 2
+    set cmd {15 5 13}
+    set databytes [binary format "c" $domain]
+    if {$callback eq {}} {
+	set callback "[code $this power_domain_load_callback $domain] \$status \$databytes"
+    }
+    send $type $cmd $databytes $callback $::priority_cmd
+}
+
+body bc::power_domain_load_callback {domain status databytes} {
+    ::amesterdebug::debug bc "power domain load status $name $domain = $status"
+    if {$status == 0} {
+	set ::bc($name,domain,$domain,valid) 1
+    } else {
+	set ::bc($name,domain,$domain,valid) 0
+	return
+    }
+    binary scan $databytes "H*" all
+    ::amesterdebug::debug bc "power domain load databytes = $all"
+    if {[binary scan $databytes "ssss" capacity demand available potential last]} {
+	#capacity = wattage of smallest power module in domain
+	set ::bc($name,domain,$domain,capacity) $capacity
+	set ::bc($name,domain,$domain,capacityestimated) [expr ($capacity & 0x8000)?1:0]
+	#demand = watts that can be consumed by all currently powered on modules
+	set ::bc($name,domain,$domain,demand) $demand
+	set ::bc($name,domain,$domain,demandestimated) [expr ($demand & 0x8000)?1:0]
+	#available=capacity - demand
+	set ::bc($name,domain,$domain,available) $available
+	set ::bc($name,domain,$domain,availableestimated) [expr ($available & 0x8000)?1:0]
+	#potential = max watts that all modules can consume, if turned on
+	set ::bc($name,domain,$domain,potential) $potential
+	set ::bc($name,domain,$domain,potentialestimated) [expr ($potential & 0x8000)?1:0]
+	::amesterdebug::debug bc "For domain:$domain capacity=$capacity demand=$demand available=$available potential=$potential"
+	::amesterdebug::debug bc "For domain:$domain estimated capacity=$::bc($name,domain,$domain,capacityestimated) demand=$::bc($name,domain,$domain,demandestimated) available=$::bc($name,domain,$domain,availableestimated) potential=$::bc($name,domain,$domain,potentialestimated)"
+    } else {
+	return -code error "bc_power_domain_load_callback"
+    }
+
+}
+
+body bc::power_domain_module_list {domain {callback {}}} {
+    set type 2
+    set cmd {15 5 15}
+    set databytes [binary format "c" $domain]
+    if {$callback eq {}} {
+	set callback "[code $this power_domain_module_list_callback $domain] \$status \$databytes"
+    }
+    send $type $cmd $databytes $callback $::priority_cmd
+}
+
+body bc::power_domain_module_list_callback {domain status databytes} {
+    ::amesterdebug::debug bc "power domain module list status $name $domain = $status"
+    if {$status != 0} {
+	set ::bc($name,domain,$domain,valid) 0
+	return
+    }
+    set i 0
+    set l [string length $databytes]
+    while {$i < $l} {
+	binary scan $databytes "@${i}c1c1" where what
+	::amesterdebug::debug bc "Found $where $what $moduletype($what)"
+	incr i 2
+    }
+}
+
+body bc::generic_callback {status cmdbytes databytes} {
+    binary scan $databytes "H*" datahex
+    binary scan $cmdbytes "H*" cmdhex
+    puts "got status=$status cmd=$cmdhex bytes=$datahex"
+}
+
+body bc::get {what args} {
+    switch $what {
+	chassistype {return $chassistype}
+	chassissubtype {return $chassissubtype}
+	blades {return $bladeobjs}
+	default {return -code error "Invalid arguement for bc::get : $what $args"}
+    }
+}

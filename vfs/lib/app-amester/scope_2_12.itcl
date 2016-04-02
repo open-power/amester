@@ -1,0 +1,2367 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+
+# Notes for Scope for AME API 2.12 #
+
+# Changes from AME 2.10
+
+# 1. Energy data in LPC register is expressed in units of 100 mJ.
+
+# 2. Temperature is no longer displayed.  It is no longer accurately given over the LPC.  Use normal AME sensors to get temperature information.  The temperature fields are in units of 3/32 C.  (Malcolm Ware's approximation of 100 mC).  Converting to C gives a result that is *at minimum* 3 degrees C different from the AME sensor.
+
+
+#--------------------------------------------------------------------
+#
+# Scope
+#
+# Scopes are associated with a data file.  Scopes can have a host
+# attribute which signifies that they will display the "start/stop"
+# button for gathering data from a host across the network. Such "host
+# scopes" are associated with a default data file for that host.
+#
+#--------------------------------------------------------------------
+
+# scope($filename, FIELD)
+#    datalist: raw data being displayed in graph
+#    recordlist: parsed records displayed in graph
+#
+#
+
+#
+# Make a scope window
+#   fname = file name (existing, or new)
+#   name = host name, if data is to be read from scope
+class amescope_2_12 {
+    inherit amescope
+
+    #Parameters
+    #Name of scope
+    public variable name ""
+    #filename
+    public variable fname ""
+    #host name
+    public variable hname ""
+    #host address
+    public variable addr "none" {
+    }
+    #port for getting data from host
+    public variable lpcport 1413
+    #host is a pointer to the host object, if data comes from host
+    public variable hostobj "" {
+	set tmp [$hostobj cget -name] 
+	.host.c.f.${tmp}_menu.functions.m add command -label "Scope..." -command [code $this make_window]
+    }
+
+    #Tk windowname
+    protected variable wname ""
+    #Title of the main window
+    protected variable title ""
+
+    # Is data streamed from a host (as opposed to a file)
+    protected variable fromhost
+
+    #Array of scope variables controlling individual traces in display
+    protected variable elementinfo
+
+    #Variables controlling scope display
+    protected variable elements {power power64ms throttle0 throttle1 try debug}
+    #protected variable elements {power power64ms temp0 temp1 throttle0 throttle1 try debug}
+    protected variable axis_power "left" 
+    protected variable axis_temp0 "left" 
+    protected variable axis_temp1 "left" 
+    protected variable axis_throttle0 "right" 
+    protected variable axis_throttle1 "right" 
+    protected variable scopeinterp 0
+    # Do not interpolate by default
+    protected variable dointerp 0
+
+    #scrollxpos is the data point displayed on the left of the scope
+    protected variable scrollxpos 0
+    #scrollpage is the number of points to show in the scope
+    protected variable scrollpage 1000
+
+    #nearest point info
+    protected variable nearname ""
+    protected variable nearx ""
+    protected variable neary ""
+    protected variable nearindex ""
+    protected variable neardist ""
+
+    protected variable datalist {}
+    protected variable recordlist {}
+
+    #Analysis window variables
+    protected variable a_status ""
+    protected variable a_avgpower1ms ""
+
+    #Thread that controls the IO of the scope
+    protected variable sthread {}
+    
+
+    protected common amescopelabelwidth 15
+    protected common amescopenumwidth 12
+
+
+
+    public method make_window {}
+    public method update_nearest {window x y}
+    public method data_window_update {}
+    public method data_window {}
+    public method records_window_update {}
+    public method records_window {}
+    public method file_graph_xscroll {args}
+    public method file_graph_section {start_rec count}
+    public method input_thread {name}
+    public method format_record {rec}
+    public method graph_list {reclist}
+    public proc trace_start {bladename filename}
+    public proc trace_stop {bladename filename}
+    public method start {}
+    public method stop {}
+    public method save_as {{initfile "scope"}}
+    public method options {}
+    public method options_apply {}
+    public method analyze_update {}
+    public method analyze_window {}
+    public method analyze {}
+    public method analyze_callback {tag}
+
+    #public method interpolate_quick {recs}
+    #public method interpolate {recs}
+    #public method interp_no_wrap {f1 f2 n}
+    #public method interp_wrap {f1 f2 n mask}
+    #public method data2rec {data}
+
+    public proc ascii_record {rec}
+
+    public method get {what}
+
+
+    constructor {args} {
+	::amesterdebug::debug scope "blade constructor for $this"
+	regsub -all "::" $this "" name
+	eval configure $args
+
+	set wname .amescope_$name
+
+	#Check -fname is set
+	if {$fname eq ""} {
+	    return -code error "Missing a required parameter. -fname <file>"
+	}
+	
+	if {$addr ne "none" && ![tsv::exists thread lpcdata_$name]} {
+	    input_thread $name
+	}
+
+	set elementinfo(power,show) 1
+	set elementinfo(power64ms,show) 0
+	set elementinfo(temp0,show) 1
+	set elementinfo(temp1,show) 1
+	set elementinfo(throttle0,show) 1
+	set elementinfo(throttle1,show) 1
+	set elementinfo(debug,show) 0
+	set elementinfo(try,show) 0
+
+	if {$hname eq ""} {
+	    set fromhost 0
+	} else {
+	    set fromhost 1
+	}
+
+	vector ::v_amescope_${name}_hist1ms
+	vector ::v_amescope_${name}_hist64ms
+	vector ::v_amescope_${name}_hist1s
+	vector ::v_amescope_${name}_histbins
+
+	return $this
+    }
+
+    destructor {
+	#Close tempfiles
+	if {$sthread ne {} && $fname ne ""} {
+	    thread::send $sthread [list amescope_2_12_close $fname] result
+	}
+    }
+
+}
+
+body amescope_2_12::start {} {
+    if {$sthread ne ""} {
+	thread::send -async $sthread [list amescope_open $fname]
+    } else {
+	return -code error "start: Scope $this has no data collection thread"
+    }
+}
+
+body amescope_2_12::stop {} {
+    if {$sthread ne ""} {
+	thread::send -async $sthread [list amescope_close $fname]
+    } else {
+	return -code error "stop: Scope $this has no data collection thread"
+    }
+}
+
+
+#
+# Use:
+#    make_window existing_file_name
+#    make_window new_file_name host_name
+#
+body amescope_2_12::make_window {} {
+    global tmpdir
+    global blade
+
+    option add *Graph.Width			10i
+    option add *Graph.leftMargin		.75i
+    option add *Graph.Height		6i
+    option add *Graph.plotBackground	black
+    
+    #option add *LineMarker.color		white
+    #option add *LineMarker.Dashes		5
+    #option add *TextMarker.foreground	white
+    #option add *TextMarker.Background	{}
+    
+    #option add *Graph.x.hide		yes
+    #option add *Graph.x.title		""
+    #option add *Graph.y.rotate		90
+    #option add *Graph.y.stepSize		2.0
+    #option add *Graph.title			""
+    #option add *graph.Title			"Example s27" 
+    #option add *graph.x.hide		no
+    #option add *graph.topMargin		0
+    #option add *graph.bottomMargin		0
+    #option add *x.Title			Time
+    #option add *y.Title			Signals
+    #option add *Pixels			1
+    
+    #option add *Reduce			0.5
+    #option add *bufferElements no
+    
+    option add *Element.color		green4
+    option add *Element.ScaleSymbols	false
+    option add *Element.Color		grey70
+    #option add *Element.Symbol		none
+    #option add *Element.LineWidth		2
+    #option add *Element.Smooth		natural
+    #option add *Element.Smooth		catrom
+    
+    #option add *activeLine.LineWidth	2
+    #option add *activeLine.Color		white
+    option add *activeLine.Color		green1
+    option add *activeLine.ScaleSymbols	false
+    #option add *activeLine.LineWidth		2
+    
+    #option add *Legend.Hide		yes
+    option add *Legend.Position		right
+    option add *Legend.Relief		flat
+    option add *Legend.activeRelief		sunken
+    option add *Legend.borderWidth		2
+    option add *Legend.Font		-*-helvetica-medium-r-*-*-10-*-*-*-*-*-*-*
+    
+    #option add *foreground white
+    option add *zoomOutline.outline		black
+
+    # If window exists, raise it. (Only in case of amescope for host)
+    if {[winfo exists $wname]} {
+	focus $wname
+	raise $wname
+	return
+    }
+
+    #
+    # Create GUI
+    #
+
+    toplevel $wname
+    if {$fromhost} {
+	set title "$hname amescope"
+    } else {
+	set title "$fname"
+    }
+    wm title $wname $title
+
+    frame $wname.bbar -relief raised -bd 2
+    button $wname.bbar.data -text "Show raw data" -command [code $this data_window]
+    button $wname.bbar.records -text "Show records" -command [code $this records_window]
+    button $wname.bbar.saveas -text "Save as..." -command [code $this save_as]
+    button $wname.bbar.options -text "Options..." -command [code $this options]
+    button $wname.bbar.analyze -text "Analyze..." -command [code $this analyze_window]
+    button $wname.bbar.analyzeoptions -text "Analyze options..." -command ta_options
+
+    if {$fromhost == 1} {
+	tsv::get thread lpcdata_$name sthread
+	button $wname.bbar.start -text "Start Recording" -command [list thread::send -async $sthread [list amescope_open $fname]]
+	button $wname.bbar.stop -text "Stop Recording" -command [list thread::send -async $sthread [list amescope_close $fname]]
+	pack $wname.bbar.data $wname.bbar.records $wname.bbar.start $wname.bbar.stop $wname.bbar.saveas $wname.bbar.options $wname.bbar.analyze $wname.bbar.analyzeoptions -side left
+    } else {
+	pack $wname.bbar.data $wname.bbar.records $wname.bbar.saveas $wname.bbar.options $wname.bbar.analyze $wname.bbar.analyzeoptions -side left
+    }
+    pack $wname.bbar -side top -fill x
+    
+    #
+    # Set up graph
+    #
+
+    global v_amescope_${name}_power
+    global v_amescope_${name}_weights
+    global v_amescope_${name}_time
+    global v_amescope_${name}_temp0
+    global v_amescope_${name}_temp1
+    global v_amescope_${name}_throttle0
+    global v_amescope_${name}_throttle1
+    global v_amescope_${name}_try
+    global v_amescope_${name}_debug
+    vector v_amescope_${name}_power
+    vector v_amescope_${name}_weights
+    vector v_amescope_${name}_time
+    vector v_amescope_${name}_temp0
+    vector v_amescope_${name}_temp1
+    vector v_amescope_${name}_throttle0
+    vector v_amescope_${name}_throttle1
+    vector v_amescope_${name}_try
+    vector v_amescope_${name}_debug
+
+    vector ::v_amescope_${name}_power64ms
+    vector ::v_amescope_${name}_time64ms
+
+
+    
+    set max 300
+    set min 0
+    
+    frame $wname.g
+    stripchart $wname.g.plot -plotbackground white -title "1 ms power" -buffergraph 0  -font $::graphtitlefont -plotpadx $::plotpadx -plotpady $::plotpady
+    $wname.g.plot pen create intpen -linewidth 2 -color lightblue -pixels 2 
+    $wname.g.plot axis create power -title "Power (W)" -stepsize 50 -subdivisions 5 -min 0 -max  $max -tickfont $::tickfont -titlefont $::axisfont
+    $wname.g.plot axis create temp -title "Temperature (C)" -stepsize 10 -min 0 -max 80 -hide 0 -tickfont $::tickfont -titlefont $::axisfont
+    $wname.g.plot axis create throttle -title "Throttle state" -stepsize 1 -subdivisions 1 -min 0 -max 7 -hide 0 -tickfont $::tickfont -titlefont $::axisfont
+    $wname.g.plot axis create try -title "try" -min 0 -hide 0 -tickfont $::tickfont -titlefont $::axisfont
+    $wname.g.plot axis create ::amesterdebug::debug -title "debug" -hide 0 -tickfont $::tickfont -titlefont $::axisfont
+    $wname.g.plot yaxis use [list power temp]
+    $wname.g.plot y2axis use [list throttle try debug]
+    $wname.g.plot axis configure x -title Time -tickfont $::tickfont -titlefont $::axisfont
+    $wname.g.plot element create power -color black  -ydata v_amescope_${name}_power -xdata v_amescope_${name}_time -label "power" -pixels 2 -weights v_amescope_${name}_weights -styles { {intpen 0.9 1.1} } -mapy power
+    #$wname.g.plot element create temp0 -color purple  -ydata v_amescope_${name}_temp0 -xdata v_amescope_${name}_time -label "temp0" -pixels 2 -weights v_amescope_${name}_weights -styles { {intpen 0.9 1.1} } -symbol square -mapy temp
+    #$wname.g.plot element create temp1 -color lightgreen  -ydata v_amescope_${name}_temp1 -xdata v_amescope_${name}_time -label "temp1" -pixels 2 -weights v_amescope_${name}_weights -styles { {intpen 0.9 1.1} } -symbol square -mapy temp
+    $wname.g.plot element create throttle0 -color red  -ydata v_amescope_${name}_throttle0 -xdata v_amescope_${name}_time -label "throttle0" -pixels 2 -weights v_amescope_${name}_weights -styles { {intpen 0.9 1.1} } -symbol triangle -mapy throttle
+    $wname.g.plot element create throttle1 -color darkred  -ydata v_amescope_${name}_throttle1 -xdata v_amescope_${name}_time -label "throttle1" -pixels 2 -weights v_amescope_${name}_weights  -symbol triangle -mapy throttle
+    $wname.g.plot element create try -color brown  -ydata v_amescope_${name}_try -xdata v_amescope_${name}_time -label "try" -pixels 1 -weights v_amescope_${name}_weights -styles { {intpen 0.9 1.1} } -mapy try
+    $wname.g.plot element create ::amesterdebug::debug -color darkgrey  -ydata v_amescope_${name}_::amesterdebug::debug -xdata v_amescope_${name}_time -label "debug" -pixels 1 -weights v_amescope_${name}_weights -styles { {intpen 0.9 1.1} } -mapy debug
+
+    #analysis trend lines
+    $wname.g.plot element create power64ms -color orange  -ydata ::v_amescope_${name}_power64ms -xdata v_amescope_${name}_time64ms -label "power64ms" -pixels 2 -styles { {intpen 0.9 1.1} } -mapy power
+    
+
+    $wname.g.plot legend configure -font $::legendfont -padx $::legendpadx -pady $::legendpady -ipadx $::legendipadx -ipady $::legendipady -anchor $::legendanchor
+    #$wname.g.plot element configure try -hide 1
+
+    $wname.g.plot grid on
+
+
+    #Add zoom
+    #Rbc_ZoomStack $wname.g.plot
+    Rbc_Crosshairs $wname.g.plot
+    Rbc_ActiveLegend $wname.g.plot
+    #Rbc_ClosestPoint $wname.g.plot
+    Rbc_PrintKey $wname.g.plot
+
+    $wname.g.plot element bind all <Enter> {
+	%W legend activate [%W element get current]
+    }
+
+    $wname.g.plot element bind all <Leave> {
+	%W legend deactivate [%W element get current]
+    }
+
+    $wname.g.plot element bind all <Motion> [code $this update_nearest %W %x %y]
+
+    $wname.g.plot legend configure -anchor nw
+
+    # Make a legend for the graph
+    frame $wname.g.legend
+    label $wname.g.legend.title -text "Legend" -anchor w
+
+    frame $wname.g.legend.power
+    frame $wname.g.legend.power.box -bg black -width 10 -height 10
+    label $wname.g.legend.power.value -text "system power" -anchor w
+
+    frame $wname.g.legend.temp0
+    frame $wname.g.legend.temp0.box -bg purple -width 10 -height 10
+    label $wname.g.legend.temp0.value -text "temp0" -anchor w
+
+    frame $wname.g.legend.temp1
+    frame $wname.g.legend.temp1.box -bg lightgreen -width 10 -height 10
+    label $wname.g.legend.temp1.value -text "temp1" -anchor w
+
+    frame $wname.g.legend.throttle0
+    frame $wname.g.legend.throttle0.box -bg red -width 10 -height 10
+    label $wname.g.legend.throttle0.value -text "throttle0" -anchor w
+
+    frame $wname.g.legend.throttle1
+    frame $wname.g.legend.throttle1.box -bg darkred -width 10 -height 10
+    label $wname.g.legend.throttle1.value -text "throttle1" -anchor w
+
+    frame $wname.g.legend.interp
+    frame $wname.g.legend.interp.box -bg lightblue -width 10 -height 10
+    label $wname.g.legend.interp.value -text "interpolated" -anchor w
+
+    #pack $wname.g.legend -side right
+    pack $wname.g.legend.title -side top -fill x
+
+    pack $wname.g.legend.power -side top -fill x
+    pack $wname.g.legend.power.box $wname.g.legend.power.value -side left
+    
+    #pack $wname.g.legend.temp0 -side top -fill x
+    #pack $wname.g.legend.temp0.box $wname.g.legend.temp0.value -side left
+
+    #pack $wname.g.legend.temp1 -side top -fill x
+    #pack $wname.g.legend.temp1.box $wname.g.legend.temp1.value -side left
+
+    pack $wname.g.legend.throttle0 -side top -fill x
+    pack $wname.g.legend.throttle0.box $wname.g.legend.throttle0.value -side left
+
+    pack $wname.g.legend.throttle1 -side top -fill x
+    pack $wname.g.legend.throttle1.box $wname.g.legend.throttle1.value -side left
+
+    pack $wname.g.legend.interp -side top -fill x
+    pack $wname.g.legend.interp.box $wname.g.legend.interp.value -side left
+
+    pack $wname.g.plot -side left -expand yes -fill both
+    pack $wname.g -side top -expand yes -fill both
+
+    # make a scrollbar
+    scrollbar $wname.xscroll -orient horizontal -command [code $this file_graph_xscroll]
+    pack $wname.xscroll -side top -expand yes -fill x
+    frame $wname.points
+    entry $wname.points.e -textvariable [scope scrollpage] -width 10 -justify right -font $::fixedfont
+    bind $wname.points.e <Return> [code $this file_graph_xscroll scroll 0 pages]
+    bind $wname.points.e <Tab> [code $this file_graph_xscroll scroll 0 pages]
+    label $wname.points.l -text "Number of data points:" -anchor w -font $::fixedfont
+    pack $wname.points.l $wname.points.e -side left -expand no -fill x
+    pack $wname.points -side top -expand no -fill x
+
+    # make nearest point
+    frame $wname.n -background white
+    label $wname.n.title -text "Nearest point" -anchor w -font $::fixedfontbold -width $amescopelabelwidth
+    label $wname.n.lname -text "trace:" -anchor e -font $::fixedfontbold
+    label $wname.n.lx -text "x:" -anchor e -font $::fixedfontbold
+    label $wname.n.ly -text "y:" -anchor e -font $::fixedfontbold
+    label $wname.n.lindex -text "index:" -anchor e -font $::fixedfontbold
+    label $wname.n.ldist -text "dist:" -anchor e -font $::fixedfontbold
+
+    label $wname.n.name -textvariable [scope nearname] -anchor w -font $::fixedfont -width $amescopelabelwidth
+    label $wname.n.x -textvariable [scope nearx] -anchor w -font $::fixedfont -width $amescopelabelwidth
+    label $wname.n.y -textvariable [scope neary] -anchor w -font $::fixedfont -width $amescopelabelwidth
+    label $wname.n.index -textvariable [scope nearindex] -anchor w -font $::fixedfont -width $amescopelabelwidth
+    label $wname.n.dist -textvariable [scope neardist] -anchor w -font $::fixedfont -width $amescopelabelwidth
+
+    pack $wname.n.title $wname.n.lname $wname.n.name $wname.n.lx $wname.n.x $wname.n.ly $wname.n.y $wname.n.lindex $wname.n.index -side left -expand yes -fill x
+    pack $wname.n -side top -expand yes -fill x
+
+    options_apply
+    
+    file_graph_xscroll moveto 0.0
+
+}
+
+body amescope_2_12::update_nearest {window x y} {
+    global amescope
+    #Find out which trace mouse is near
+    $window element closest $x $y valuearray
+    
+    #Store the info
+    if {$valuearray(name) eq ""} {
+	set nearname ""
+	set nearx ""
+	set neary ""
+	set nearindex ""
+	set neardist ""
+    } else {
+	set nearname [format "%-${amescopenumwidth}s" $valuearray(name)]
+	if {[string length $valuearray(x)] <= $amescopenumwidth} {
+	    set nearx $valuearray(x)
+	} else {
+	    set nearx [format "%-${amescopenumwidth}.5g" $valuearray(x)]
+	}
+	set neary [format "%-${amescopenumwidth}.3g" $valuearray(y)]
+	set nearindex [format "%-${amescopenumwidth}i" $valuearray(index)]
+	set neardist [format "%-${amescopenumwidth}.3f" $valuearray(dist)]
+    }
+}
+
+body amescope_2_12::data_window_update {} {
+    global amescope
+
+    set w .amescope_${name}_data
+    if {![winfo exists $w]} {return}
+
+    foreach data $datalist {
+	binary scan $data "H*" all
+	lappend hex $all
+    }
+    set text [join $hex "\n"]
+    
+    $w.text delete 1.0 end
+    $w.text insert end $text
+    
+}
+
+body amescope_2_12::data_window {} {
+    global amescope
+
+    set w .amescope_${name}_data
+    if {[winfo exists $w]} {
+	focus $w
+	raise $w
+	return
+    }
+    
+    toplevel $w
+    wm title $w "$title raw data"
+    text $w.text -wrap word -yscrollcommand [list $w.yscroll set] -width 64 -height 15 -font $::fixedfont
+    scrollbar $w.yscroll -orient vertical -command [list $w.text yview]
+    grid $w.text $w.yscroll -sticky news
+    grid rowconfigure $w 0 -weight 1
+    grid columnconfigure $w 0 -weight 1
+
+    data_window_update
+}
+
+body amescope_2_12::records_window_update {} {
+    global amescope
+
+    set w .amescope_${name}_records
+    if {![winfo exists $w]} {return}
+
+    foreach record $recordlist {
+	lappend all [format_record $record]
+    }
+    set text [join $all "\n"]
+    
+    $w.text delete 1.0 end
+    $w.text insert end $text
+}
+
+body amescope_2_12::records_window {} {
+    global amescope
+
+    set w .amescope_${name}_records
+    if {[winfo exists $w]} {
+	focus $w
+	raise $w
+	return
+    }
+    
+    toplevel $w
+    wm title $w "$title records"
+    text $w.text -wrap word -yscrollcommand [list $w.yscroll set] -width 100 -height 15 -font $::fixedfont
+    scrollbar $w.yscroll -orient vertical -command [list $w.text yview]
+    
+    grid $w.text $w.yscroll -sticky news
+    grid rowconfigure $w 0 -weight 1
+    grid columnconfigure $w 0 -weight 1
+
+    records_window_update
+}
+
+
+#
+# Open fname, seek to the record "start_rec" and graph "count" of them
+#
+body amescope_2_12::file_graph_xscroll {args} {
+    global amescope
+
+    lassign $args action amount unit
+
+    set size [file size $fname]
+    if {$size == 0} {return}
+
+    set numrec [expr $size / 32]
+    
+    switch $action {
+	"scroll" {
+	    switch $unit {
+		"pages" {
+		    incr scrollxpos [expr $amount * $scrollpage]
+		}
+		"units" {
+		    incr scrollxpos [expr int($amount * $scrollpage / 4.0)]
+		}
+		default {
+		    ::amesterdebug::debug 1 "Unknown scroll unit $action $amount $unit"
+		}
+	    }
+	}
+	"moveto" {
+	    set scrollxpos [expr int($numrec * $amount)]
+	}
+	default {
+	    ::amesterdebug::debug 1 "Unknown scroll action $action $amount $unit"
+	}
+    }
+
+    if {$scrollxpos < 0} {set scrollxpos 0}
+    if {$scrollxpos >= $numrec } {set scrollxpos [expr $numrec-1]}
+
+    #Display at least a whole page on the screen when we get to the end of the file
+    if {$scrollxpos > $numrec - $scrollpage && $scrollxpos > $scrollpage} {set scrollxpos [expr $numrec - $scrollpage]}
+
+    #Set the scrollbars
+    set start [expr double($scrollxpos)/$numrec] 
+    set end [expr double($scrollxpos+$scrollpage)/$numrec]
+    if {$start < 0.0} {set start 0.0}
+    if {$end > 1.0} {set end 1.0}
+    $wname.xscroll set $start $end
+
+    file_graph_section $scrollxpos $scrollpage
+    return
+}
+
+
+# To do: improve graph code by only processing incrementally
+# 1. Check what needs to come before. Process it. Insert it before.
+# 2. Check what needs to come after. Process it. Insert it after.
+# 3. truncate: problem how to truncate to enough real points?
+
+body amescope_2_12::file_graph_section {start_rec count} {
+    if {[catch {set file [open $fname r]}]} {
+	puts stderr "Cannot open file $fname"
+	return
+    }
+    fconfigure $file -translation binary
+    set size [file size $fname]
+    set seek_start [expr 32 * $start_rec]
+    if {$size < $seek_start} {set seek_start $size}
+    set last [expr $seek_start + 32 * $count]
+    if {$last > $size} {set last $size}
+    seek $file $seek_start start
+    set position $seek_start
+
+    set tmpdata {}
+
+    while {$position < $last} {
+	set line [read $file 32]
+	lappend tmpdata $line
+	set len [string length $line]
+	if {$len != 32} {
+	    puts "got wrong length $len"
+	} else {
+	    #binary scan $line "H*" all
+	    #puts "graph $all"
+	}
+	incr position 32
+    }
+
+    close $file
+
+    set len [llength $tmpdata]
+    if {$len < 2} {return}
+
+    # Convert binary data to records
+    set last_rec {}
+    set f_energy 0
+    foreach data $tmpdata {
+	set rec [data2rec $data]
+	lappend recs $rec 
+    }
+    
+    set datalist $tmpdata
+    data_window_update
+
+    # Fill in missing records (optional step)
+    if {$dointerp} {
+	set complete_records [interpolate $recs]
+    } else {
+	set complete_records $recs
+    }
+
+    set recordlist $complete_records
+    records_window_update  
+
+    # Graph complete records
+    graph_list $complete_records
+    update idletasks
+
+    # Update analysis window, if it exists
+    analyze_update
+    
+}
+
+#
+#data2rec: convert binary data to record
+#
+proc data2rec {data} {
+    #set r [binary scan $data "H16iicH2H2H2H2Iccccccc" before bmc_time behind try cpu0 cpu1 cpu2 cpu3 energy temp0 temp1 debug0  pcount tcount throttle lpc15]
+    set r [binary scan $data "wiicH2H2ccIccccccc" before bmc_time behind try cpu0 cpu1 cpu2 cpu3 energy temp0 temp1 debug0  pcount tcount throttle lpc15]
+
+    # Convert byte data to be expressed as unsigned.
+    # Tcl needs this because binary scan doesn't parse unsigned chars
+    set debug0 [expr $debug0 & 0x0ff]
+    set pcount [expr $pcount & 0x0ff]
+    set tcount [expr $tcount & 0x0ff]
+    set lpc15 [expr $lpc15 & 0x0ff]
+    set try [expr $try & 0x0ff]
+    set cpu3 [expr ((($cpu2 & 0xff) << 8) | ($cpu3 & 0xff))]
+
+    # Throttle of processors 0 and 1
+    set throttle0 [expr $throttle & 0x07]
+    set throttle1 [expr ($throttle >> 3) & 0x07]
+
+    #
+    # Create data record.  Last field: isInterpolated (0=no,1=yes)
+    #
+    return [list $before $bmc_time $behind $try 0x$cpu0 0x$cpu1 0x$cpu2 $cpu3 $energy $temp0 $temp1 $debug0 $pcount $tcount $throttle0 $throttle1 $lpc15 0]
+
+}
+
+
+#
+# Amescope input thread
+#  There is one for each host
+#  This thread can dump data to multiple files simultaneously
+#  and is also used by the tracing CLI as well as the amescope GUI.
+#  
+#  amescope_open and amescope_close starts and stops tracing to a file.
+#
+body amescope_2_12::input_thread {name} {
+
+    set sthread [thread::create {
+
+	set name 0
+	set lpcport 0
+	set addr 0G
+	
+	set lpcstatus "disconnected"
+	set lpcsock 0
+
+	set bw_counter_limit 5000
+	set bw_counter 0
+	set time_last_ms [clock clicks -milliseconds]
+
+	set gui 0
+
+	set datacount 0
+
+	set updatecount 1000
+
+	set obj {}
+
+	tsv::get thread gthread gthread
+	
+	proc amescope_close {filename} {
+	    global name
+	    global lpcstatus
+	    global lpcsock
+	    global filehash
+
+	    if {[info exists filehash($filename,sock)]} {
+		close $filehash($filename,sock)
+		array unset filehash "$filename,*"
+	    }
+	    amescope_detach
+	    # update graph 1 final time
+	    amescope_update
+	}
+
+	proc amescope_detach {} {
+	    global filehash
+	    global lpcstatus
+	    global lpcsock
+	    # If there are no more readers, then close socket
+	    if {([llength [array names filehash]] == 0) && ($lpcstatus eq "open")} {
+		close $lpcsock
+		set lpcstatus "disconnected"
+	    } else {
+		puts "can't close because there are readers: [llength $readers] *${readers}*"
+	    }
+
+	}
+
+	proc amescope_open {filename} {
+	    global name
+	    global lpcport
+	    global lpcsock
+	    global lpcstatus
+	    global addr
+	    global filehash
+	    global socklist
+
+	    set sock none
+
+	    #attach amescope to network, in case it has not been done already.
+	    amescope_attach
+	    # Open file, if not already
+	    if {![info exists filehash($filename,sock)]} {
+		if {[catch {set sock [open $filename w]} result]} {
+		    return -code error $result
+		} else {
+		}
+		fconfigure $sock -translation binary -blocking yes
+		set filehash($filename,sock) $sock
+	    } else {
+		# sock already exists
+		puts "ERROR: amescope sock exists $sock"
+	    }
+	}
+
+	proc amescope_status {} {
+	    global lpcstatus
+	    return $lpcstatus
+	}
+
+	# Turn on network
+	proc amescope_attach {} {
+	    global lpcstatus
+	    global lpcport
+	    global addr
+	    global datacount
+	    global lpcsock
+	    if {$lpcstatus eq "disconnected"} {
+		set lpcsock [socket -async $addr $lpcport]
+		fconfigure $lpcsock -translation binary -blocking yes    
+		fileevent $lpcsock r [list amescope_read_callback]
+		set lpcstatus "open"
+		vwait datacount
+	    }
+	}
+
+	proc amescope_update {} {
+	    global gui
+	    global obj
+	    #global lpcstatus
+	    global gthread
+	    global updatecount
+	    if {$gui} {
+		thread::send $gthread [list $obj get scrollpage] scroll
+		set updatecount [expr $scroll / 4]
+		#move to end
+		thread::send -async $gthread [list $obj file_graph_xscroll moveto 1.0]
+	    }
+	}
+
+
+	proc amescope_read_callback {} {
+	    global lpcsock
+	    global filehash
+
+	    set f $lpcsock
+	    if {[eof $f] || [catch {set line [read $f 32]}]} {
+		close $f
+		set done 1
+		return
+	    } 
+
+	    foreach index [array names filehash] {
+		puts -nonewline $filehash($index) $line
+	    }
+
+	    global datacount
+	    global updatecount
+	    incr datacount
+	    if {$datacount >= $updatecount} {
+		set datacount 0
+		amescope_update
+	    }
+	    
+	    global bw_counter_limit
+	    global bw_counter
+	    global time_last_ms
+	    incr bw_counter
+	    if {$bw_counter == $bw_counter_limit} {
+		set time_now_ms [clock clicks -milliseconds]
+		set secs [expr double($time_now_ms - $time_last_ms) / 1000]
+		set bw [expr double($bw_counter) / $secs ]
+		#puts stderr [format "bw (recs/s) = %f  (%f secs) ($time_now_ms $time_last_ms)" $bw $secs]
+		set time_last_ms $time_now_ms
+		set bw_counter 0
+	    }
+	    
+	}
+	thread::wait
+    }]
+    
+    tsv::set thread lpcdata_$name $sthread
+    thread::send $sthread [list set name $name]
+
+    global options
+    thread::send $sthread [list set obj $this]
+    thread::send $sthread [list set lpcport $lpcport]
+    thread::send $sthread [list set addr $addr]
+    thread::send $sthread [list set gui $options(gui)]
+}
+
+
+
+body amescope_2_12::format_record {rec} {
+    if { [llength $rec] != 18 } {
+	::amesterdebug::debug amescope puts "print_record: Illegal record format. length=[llength$rec] rec=$rec"
+	return ""
+    }
+    lassign $rec before bmc_time behind try cpu0 cpu1 cpu2 cpu3 energy temp0 temp1 debug0 pcount tcount throttle0 throttle1 lpc15 isInterpolated
+    return [format "before=%lu bmc_time=%u behind=%u try=%u cpu0=%s cpu1=%s cpu2=%s cpu3=%s energy=%u temp0=%u temp1=%u debug0=%u pcount=%u tcount=%u throttle0=%u throttle1=%u lpc15=%u interpolated=%u" $before $bmc_time $behind $try $cpu0 $cpu1 $cpu2 $cpu3 $energy $temp0 $temp1 $debug0 $pcount $tcount $throttle0 $throttle1 $lpc15 $isInterpolated]
+}
+
+body amescope_2_12::ascii_record {rec} {
+    if { [llength $rec] != 18 } {
+	::amesterdebug::debug amescope puts "print_record: Illegal record format. length=[llength$rec] rec=$rec"
+	return ""
+    }
+    lassign $rec before bmc_time behind try cpu0 cpu1 cpu2 cpu3 energy temp0 temp1 debug0 pcount tcount throttle0 throttle1 lpc15 isInterpolated
+    return [format "%lu %u %u %u %s %s %s %s %u %u %u %u %u %u %u %u %u %u" $before $bmc_time $behind $try $cpu0 $cpu1 $cpu2 $cpu3 $energy $temp0 $temp1 $debug0 $pcount $tcount $throttle0 $throttle1 $lpc15 $isInterpolated]
+}
+
+# Amescope interpolate template: what to do with each field of a data record
+#   0: set to zero
+#   1: set to one
+#   2: copy
+#   3: interpolate with wrap
+#   4: interpolate without wrap
+set amescope_2_12_interpolate_template {{3 0xffffffffffffffff} {3 0xffffffff} 2 0 2 2 2 2 {3 0xffffffff} 4 4 2 {3 0xff} {3 0xff} 2 2 0 1}
+
+# This quick interpolation lets the BLT graph do all the work by
+# drawing a horizontal line at the average value.  It does not
+# generate all the points like the amescope_interpolate routine.
+# 
+# If only missing 1 point, then call amescope_interpolate. It is fast enough.
+# Otherwise:
+# For copy fields: insert points at the begin & end of the range that matches the last non-interpolated point.
+# For interpolate fields: insert points at the begin & end of range that matches the average across the entire range.
+# For zero and one fields: insert points at both the beginning and end of range
+proc interpolate_quick {recs} {
+    global amescope_2_12_interpolate_template
+
+    set rc {}
+
+    # set f_tcount to tcount of first record
+    #  If this fails, because recordlist is null, 
+    #  then the loop below short-circuits and we return {}
+    #set timefield 13
+    set timefield 1
+    set first [lindex $recs 0]
+    set f_tcount [lindex $first $timefield]
+
+    foreach second $recs {
+
+	set s_tcount [lindex $second $timefield]
+	
+	#if {$s_tcount < $f_tcount} {
+	#set diff [expr ($s_tcount + 256) - $f_tcount]
+	#} else {
+	#set diff [expr $s_tcount - $f_tcount]
+	#}
+	
+	set diff [expr $s_tcount - $f_tcount]
+	
+	if {$diff < 2} {
+	    # Short-circuit for 1st record of list and any mal-formed records
+	    lappend rc $second
+	} elseif {$diff == 2} {
+	    # Only 1 point missing. Interpolate normally.
+	    set result [interpolate [list $first $second]]
+	    # remove first element
+	    set result [lreplace $result 0 0]
+	    foreach r $result {
+		lappend rc $r
+	    }
+	} elseif {$diff > 2} {
+	    #multiple points missing. Use quick body
+	    
+	    # n is the number of new records to create
+	    set n [expr $diff - 1]
+	    
+	    #
+	    # Interpolate
+	    #
+	    
+	    # initialize list of records to return
+	    #for {set i 0} {$i < $n} {incr i} {
+	    #	set missing($i) {}
+	    #    }
+	    set m1 {}
+	    set m2 {}
+	    
+	    foreach t $amescope_2_12_interpolate_template f1 $first f2 $second {
+		if {[llength $t] == 1} {
+		    set s $t
+		} elseif {[llength $t] == 2} {
+		    set s [lindex $t 0]
+		    set a [lindex $t 1]
+		} else {
+		    ::amesterdebug::debug Amescope "ERROR: unknown template pattern"
+		}
+		::amesterdebug::debug amescope "    s=$s f1=$f1 f2=$f2"
+		switch -- $s {
+		    0 { 
+			lappend m1 0
+			lappend m2 0
+		    }
+		    1 { 
+			lappend m1 1
+			lappend m2 1
+		    }
+		    2 { 
+			lappend m1 $f1
+			lappend m2 $f1
+		    }
+		    3 {
+			set r [interp_wrap_quick $f1 $f2 $n $a]
+			lappend m1 [lindex $r 0]
+			lappend m2 [lindex $r 1]
+		    }
+		    4 {
+			set r [interp_no_wrap_quick $f1 $f2 $n]
+			lappend m1 [lindex $r 0]
+			lappend m2 [lindex $r 1]
+		    }
+		    default {
+			puts "invalid amescope template value $s "
+		    }
+		}
+		#for {set i 0} {$i < $n} {incr i} {
+		#    ::amesterdebug::debug amescope "   miss $i =  $missing($i)"
+		#}
+	    }
+	    
+	    for {set i 0} {$i < $n} {incr i} {
+		lappend rc $missing($i)
+	    }
+	    
+	    lappend rc $second
+	}
+
+
+	set f_tcount $s_tcount
+	set first $second
+
+    }
+
+    return $rc
+}
+
+proc interpolate {recs} {
+    global amescope_2_12_interpolate_template
+
+    set rc {}
+
+    # set f_tcount to tcount of first record
+    #  If this fails, because recordlist is null, 
+    #  then the loop below short-circuits and we return {}
+    #set timefield 13
+    set timefield 1
+    set first [lindex $recs 0]
+    set f_tcount [lindex $first $timefield]
+
+    foreach second $recs {
+
+	set s_tcount [lindex $second $timefield]
+	
+	#if {$s_tcount < $f_tcount} {
+	#set diff [expr ($s_tcount + 256) - $f_tcount]
+	#} else {
+	#set diff [expr $s_tcount - $f_tcount]
+	#}
+	
+	set diff [expr $s_tcount - $f_tcount]
+	
+	# Short-circuit for 1st record of list and any mal-formed records
+	if {$diff > 1} {
+	    
+	    # n is the number of new records to create
+	    set n [expr $diff - 1]
+	    
+	    #
+	    # Interpolate
+	    #
+	    
+	    # initialize list of records to return
+	    for {set i 0} {$i < $n} {incr i} {
+		set missing($i) {}
+	    }
+	    
+	    foreach t $amescope_2_12_interpolate_template f1 $first f2 $second {
+		if {[llength $t] == 1} {
+		    set s $t
+		} elseif {[llength $t] == 2} {
+		    set s [lindex $t 0]
+		    set a [lindex $t 1]
+		} else {
+		    ::amesterdebug::debug Amescope "ERROR: unknown template pattern"
+		}
+		::amesterdebug::debug amescope "    s=$s f1=$f1 f2=$f2"
+		switch -- $s {
+		    0 { 
+			for {set i 0} {$i < $n} {incr i} {
+			    lappend missing($i) 0
+			}
+		    }
+		    1 { 
+			for {set i 0} {$i < $n} {incr i} {
+			    lappend missing($i) 1
+			}
+		    }
+		    2 { 
+			for {set i 0} {$i < $n} {incr i} {
+			    lappend missing($i) $f1
+			}
+		    }
+		    3 {
+			set r [interp_wrap $f1 $f2 $n $a]
+			for {set i 0} {$i < $n} {incr i} {
+			    lappend missing($i) [lindex $r $i]
+			}
+		    }
+		    4 {
+			set r [interp_no_wrap $f1 $f2 $n]
+			for {set i 0} {$i < $n} {incr i} {
+			    lappend missing($i) [lindex $r $i]
+			}
+		    }
+		    default {
+			puts "invalid amescope template value $s "
+		    }
+		}
+		#for {set i 0} {$i < $n} {incr i} {
+		#    ::amesterdebug::debug amescope "   miss $i =  $missing($i)"
+		#}
+	    }
+	    
+	    for {set i 0} {$i < $n} {incr i} {
+		lappend rc $missing($i)
+	    }
+	    
+	}
+
+
+	lappend rc $second
+	set f_tcount $s_tcount
+	set first $second
+
+    }
+
+    return $rc
+}
+
+#
+# Interpolate integer values between two integers
+#
+proc interp_no_wrap {f1 f2 n} {
+    # f1: first value
+    # f2: second value
+    # n: number of missing values to interpolate
+
+    ::amesterdebug::debug amescope "     no_wrap: $f1 $f2 $n"
+
+    if {$n == 0} {return {}}
+
+    set value [expr double($f1)]
+    set diff [expr $f2 - $f1]
+    set step [expr double($diff)/(double($n) + 1)]
+    ::amesterdebug::debug amescope "            : init=$value diff=$diff step=$step"
+    for {set i 0} {$i < $n} {incr i} {
+	set value [expr $value + $step]
+	set int [expr wide($value)]
+	::amesterdebug::debug amescope "            : value=$value int=$int"
+	lappend r $int
+	::amesterdebug::debug amescope "            : r=$r"
+    }
+    ::amesterdebug::debug amescope "            : r=$r"
+    return $r
+}
+
+# Interpolate accumulators that wrap around.
+# Assume that values are unsigned integers and mask specifies the
+# number of bits to use.  #
+proc interp_wrap {f1 f2 n mask} {
+    # f1: first value
+    # f2: second value
+    # n: number of missing values to interpolate
+    # mask: mask for final integer value
+
+    ::amesterdebug::debug amescope "     wrap: $f1 $f2 $n $mask"
+
+    if {$n == 0} {return {}}
+
+    if {$f2 >= $f1} {
+	::amesterdebug::debug amescope "     wrap: normal case"
+	return [interp_no_wrap $f1 $f2 $n]
+    } else {
+	::amesterdebug::debug amescope "     wrap: wrapped"
+	set sg [interp_no_wrap $f1 [expr $f2 + $mask + 1] $n]
+	foreach f $sg {
+	    lappend r [expr $f & $mask]
+	}
+	return $r
+    }
+    
+}
+
+# 
+# Graph a list of records, with a given start time
+#
+body amescope_2_12::graph_list {reclist} {
+    set len [llength $reclist]
+    if {$len < 2} {return}
+
+    set last_record {}
+
+    global v_amescope_${name}_power
+    global v_amescope_${name}_weights
+    global v_amescope_${name}_time
+    global v_amescope_${name}_temp0
+    global v_amescope_${name}_temp1
+    global v_amescope_${name}_throttle0
+    global v_amescope_${name}_throttle1
+    global v_amescope_${name}_try
+    global v_amescope_${name}_debug
+    
+    vector create vpower
+    vector create vtime
+    vector create weight
+    vector create temp0
+    vector create temp1
+    vector create throttle0
+    vector create throttle1
+    vector create try
+    vector create vdebug
+    
+    vpower length 0
+    vtime length 0
+    weight length 0
+    temp0 length 0
+    temp1 length 0
+    throttle0 length 0
+    throttle1 length 0
+    try length 0
+    v::amesterdebug::debug length 0
+
+    foreach record $reclist {
+
+	if {[llength $last_record] == 0} {
+	    set last_record $record
+	    continue
+	}
+
+	set f_energy [lindex $last_record 8]
+	set f_bmc_time [lindex $last_record 1]
+	set s_energy [lindex $record 8]
+	set s_bmc_time [lindex $record 1]
+	set s_interp [lindex $record 17]
+	set s_temp0 [lindex $record 9]
+	set s_temp1 [lindex $record 10]
+	set s_throttle0 [lindex $record 14]
+	set s_throttle1 [lindex $record 15]
+	set s_::amesterdebug::debug [lindex $record 11]
+
+	# For AME 2.12, divide by 1000 to convert 100 mJ to J
+	set power [expr ($s_energy - $f_energy)/($s_bmc_time - $f_bmc_time) / 10.0 ]
+
+	set s_try [lindex $record 3]
+
+	# Stuff it into the vectors
+
+	# graph the interval of power using the time from the end of the interval.
+
+	vpower append $power
+	vtime append $s_bmc_time
+	weight append $s_interp
+	temp0 append $s_temp0
+	temp1 append $s_temp1
+	throttle0 append $s_throttle0
+	throttle1 append $s_throttle1
+	try append $s_try
+	v::amesterdebug::debug append $s_debug
+
+	set last_record $record
+    }
+
+    v_amescope_${name}_weights set weight
+    v_amescope_${name}_power set vpower
+    v_amescope_${name}_time set vtime
+    v_amescope_${name}_temp0 set temp0
+    v_amescope_${name}_temp1 set temp1
+    v_amescope_${name}_throttle0 set throttle0
+    v_amescope_${name}_throttle1 set throttle1
+    v_amescope_${name}_try set try
+    v_amescope_${name}_::amesterdebug::debug set vdebug
+}
+
+
+
+#
+# User level commands for amescope
+#
+
+#
+# Begin taking a trace of amescope data to a file
+#
+body amescope_2_12::trace_start {bladename filename} {
+    puts "amescope_2_12_trace_start bladename=$bladename"
+    set powerscope [$bladename cget -powerscope]
+    tsv::get thread lpcdata_[$powerscope cget -name] thethread
+    catch {
+	thread::send $thethread [list amescope_open $filename] result
+    } catchresult
+    if {$catchresult} {
+	return -code error $result
+    }
+}
+
+#
+# Stop taking a trace of amescope data to a file
+#
+body amescope_2_12::trace_stop {bladename filename} {
+    set powerscope [$bladename cget -powerscope]
+    tsv::get thread lpcdata_[$powerscope cget -name] thethread
+    thread::send $thethread [list amescope_close $filename] result
+}
+
+
+#
+# amescope_open_network: gather amescope data from a host on network
+#    name: host name
+#
+body amescope_2_12::save_as {{initfile "scope"}} {
+    global tmpdir
+    global amescope
+    global lastdir
+
+    if {[info exists lastdir]} {
+	set dir $lastdir
+    } else {
+	set dir $tmpdir
+    }
+
+    set filename [tk_getSaveFile -defaultextension .ame -initialdir $dir -initialfile $initfile -title "Save as..."]
+    if {$filename ne ""} {
+	if {[catch {file copy -force $fname $filename}]} {
+	    # can't do the copy
+	    puts "Error during save as $filename"
+	} else {
+	    set $fname $filename
+	    wm title $wname $filename
+	    set lastdir [file dirname $filename]
+	}
+    } else {
+	# Cancel save as
+    }
+
+}
+
+#
+# Show the options window
+#
+body amescope_2_12::options {} {
+    # If window exists, raise it. (Only in case of amescope for host)
+    set w .amescope_options_$name
+    if {[winfo exists $w]} {
+	focus $w
+	raise $w
+	return
+    }
+
+    toplevel $w
+    wm title $w "$title options"
+
+    frame $w.axispower
+    
+    frame $w.show
+    foreach element $elements {
+	checkbutton $w.show.${element} -text "Show $element" -variable [scope elementinfo(${element},show)] -command [code $this options_apply]
+	pack $w.show.${element} -side top -fill y -anchor w
+    }
+
+    pack $w.show -side top -fill both
+
+
+    checkbutton $w.dointerpolate -text "Interpolate missing data" -variable [scope dointerp]  -command [code $this options_apply]
+    pack $w.dointerpolate -side top -fill y -anchor w
+    checkbutton $w.interpolated -text "Highlight interpolated data" -variable [scope scopeinterp]  -command [code $this options_apply]
+    pack $w.interpolated -side top -fill y -anchor w
+
+
+    #button $w.apply -text "Apply" -command [list options_apply $name]
+    #pack $w.apply -side top -fill x
+}
+
+body amescope_2_12::options_apply {} {
+    foreach element $elements {
+	.amescope_$name.g.plot element configure ${element} -hide [expr !$elementinfo(${element},show)]
+	if {$scopeinterp} {
+	    .amescope_$name.g.plot element configure ${element} -styles { {intpen 0.9 1.1} }
+	} else {
+	    .amescope_$name.g.plot element configure ${element} -styles { }
+	}
+    }
+
+    if {$elementinfo(power,show)} {
+	.amescope_$name.g.plot axis configure power -hide 0
+    } else {
+	.amescope_$name.g.plot axis configure power -hide 1
+    }
+
+    if {$elementinfo(temp0,show) || $elementinfo(temp1,show)} {
+	.amescope_$name.g.plot axis configure temp -hide 0
+    } else {
+	.amescope_$name.g.plot axis configure temp -hide 1
+    }
+
+    if {$elementinfo(throttle0,show) || $elementinfo(throttle1,show)} {
+	.amescope_$name.g.plot axis configure throttle -hide 0
+    } else {
+	.amescope_$name.g.plot axis configure throttle -hide 1
+    }
+
+    if {$elementinfo(try,show)} {
+	.amescope_$name.g.plot axis configure try -hide 0
+    } else {
+	.amescope_$name.g.plot axis configure try -hide 1
+    }
+
+    if {$elementinfo(debug,show)} {
+	.amescope_$name.g.plot axis configure ::amesterdebug::debug -hide 0
+    } else {
+	.amescope_$name.g.plot axis configure ::amesterdebug::debug -hide 1
+    }
+
+    file_graph_xscroll scroll 0 pages
+}
+
+# Run the analysis routines, but only if the user wants to see it.
+#
+#
+body amescope_2_12::analyze_update {} {
+    # We must run the analysis routines if
+    #  1) the analysis window is showing
+    #  2) any analysis data in the amescope window is showing
+    set w .amescope_analyze_$name
+    if {[winfo exists $w] || $elementinfo(power64ms,show)} {analyze}
+}
+
+# Show the user the analysis window.
+# 1. If it doesn't exist, the create it.
+# 2. raise it.
+#
+body amescope_2_12::analyze_window {} {
+    # If window exists, raise it. (Only in case of amescope for host)
+    set w .amescope_analyze_$name
+    if {![winfo exists $w]} {
+	toplevel $w
+	wm title $w "Analysis"
+	
+	#set analysis output labels to be blank
+	set a_status ""
+	
+	frame $w.v
+	label $w.v.statusl -text "Status:" -anchor w
+	label $w.v.status -textvariable [scope a_status] -anchor w
+	
+	label $w.v.avgpower1msl -text "Avg power 1 ms:" -anchor w
+	label $w.v.avgpower1ms -textvariable [scope a_avgpower1ms]  -anchor w
+
+	grid $w.v.statusl $w.v.status -sticky w
+	grid $w.v.avgpower1msl $w.v.avgpower1ms -sticky w
+
+	pack $w.v -side top -expand yes -fill x
+	
+	graph $w.plot -plotbackground white -title "power histogram" -buffergraph 0  -font $::graphtitlefont -plotpadx $::plotpadx -plotpady $::plotpady
+	$w.plot axis create power -title "Time (%)" -stepsize 10 -subdivisions 5 -min 0 -max 100 -tickfont $::tickfont -titlefont $::axisfont
+	vector ::v_amescope_${name}_hist1ms
+	vector ::v_amescope_${name}_hist64ms
+	vector ::v_amescope_${name}_hist1s
+	vector ::v_amescope_${name}_histbins
+	$w.plot yaxis use [list power]
+	$w.plot axis configure x -title "Power (W)" -tickfont $::tickfont -titlefont $::axisfont
+
+	$w.plot element create power1ms -color black -ydata v_amescope_${name}_hist1ms -xdata v_amescope_${name}_histbins -label "power 1ms" -pixels 2 -mapy power
+	$w.plot element create power64ms -color blue -ydata v_amescope_${name}_hist64ms -xdata v_amescope_${name}_histbins -label "power 64ms moving avg" -pixels 2 -mapy power
+	$w.plot element create power1s -color green -ydata v_amescope_${name}_hist1s -xdata v_amescope_${name}_histbins -label "power 1s moving avg" -pixels 2 -mapy power
+	
+	$w.plot grid on
+	#Rbc_ZoomStack $w.plot
+	Rbc_Crosshairs $w.plot
+	Rbc_ActiveLegend $w.plot
+	#Rbc_ClosestPoint $w.g.plot
+	Rbc_PrintKey $w.plot
+
+	$w.plot legend configure -anchor nw  -padx $::legendpadx -pady $::legendpady -ipadx $::legendipadx -ipady $::legendipady -anchor $::legendanchor
+
+	pack $w.plot -side top -expand yes -fill both
+
+	# put data in the window
+	analyze_update
+    }
+    focus $w
+    raise $w
+}
+
+# Do an analysis of the current amescope window
+#
+#
+body amescope_2_12::analyze {} {
+    # If window exists, raise it. (Only in case of amescope for host)
+    set w .amescope_analyze_$name
+    if {[llength $recordlist] <2} {
+	set a_status "error - not enough data to analyze."
+	return
+    }
+
+    set a_status "working"
+
+    #calculate average power over 1 ms samples in window
+    set first [lindex $recordlist 0]
+    set second [lindex $recordlist end]
+    set f_energy [lindex $first 8]
+    set s_energy [lindex $second 8]
+    set f_bmc_time [lindex $first 1]
+    set s_bmc_time [lindex $second 1]
+    
+    # Note: For AME 2.12, divide by 10 to convert 100 mJ to J
+    set a_avgpower1ms "[expr ($s_energy - $f_energy)/($s_bmc_time - $f_bmc_time)/ 10.0] W"
+    
+
+    set a_status "done"
+
+    ta_records $fname $recordlist [code $this analyze_callback]
+    #[list ta_print_results]
+#    [list amescope_analyze_callback $name]
+
+}
+
+# Process results of trace analysis on amescope window
+# Input: tag - used to get analysis results from array ::ta($tag,*)
+# Output: updates analysis window and traces
+#
+body amescope_2_12::analyze_callback {tag} {
+    ::v_amescope_${name}_power64ms set $::ta($tag,v_power64ms_power)
+    ::v_amescope_${name}_time64ms set $::ta($tag,v_power64ms_time)
+
+    for {set i 0} {$i<$::ta($tag,bins)} {incr i} {
+	lappend bins [expr $i * $::ta($tag,binsize)]
+    }
+    ::v_amescope_${name}_histbins set $bins
+    if {$::ta($tag,hist1mscount) != 0} {
+	for {set i 0} {$i<$::ta($tag,bins)} {incr i} {
+	    lappend values1ms [expr 100*double($::ta($tag,hist1ms,$i))/double($::ta($tag,hist1mscount))]
+	}
+	::v_amescope_${name}_hist1ms set $values1ms
+    }
+    if {$::ta($tag,hist64mscount) != 0} {
+	for {set i 0} {$i<$::ta($tag,bins)} {incr i} {
+	    lappend values64ms [expr 100*double($::ta($tag,hist64ms,$i))/double($::ta($tag,hist64mscount))]
+	}
+	::v_amescope_${name}_hist64ms set $values64ms
+    }
+    if {$::ta($tag,hist1scount) != 0} {
+	for {set i 0} {$i<$::ta($tag,bins)} {incr i} {
+	    lappend values1s [expr 100*double($::ta($tag,hist1s,$i))/double($::ta($tag,hist1scount))]
+	}
+	::v_amescope_${name}_hist1s set $values1s
+    }
+
+	
+    #puts "64ms length is [::v_amescope_${name}_power64ms length]"
+    #puts "maxpower was $::ta($tag,maxpower1ms) at $::ta($tag,maxtime1ms)"
+    #puts "maxpower 64ms was $::ta($tag,maxpower64ms) at $::ta($tag,maxtime64ms)"
+    #puts "maxpower step up $::ta($tag,maxpower1msstepup) at $::ta($tag,maxtime1msstepup)"
+    #puts "maxpower step down $::ta($tag,maxpower1msstepdown) at $::ta($tag,maxtime1msstepdown)"
+
+}
+
+#--------------------------------------------------------------------
+#
+# Trace Analysis
+#
+# procedures are named ta_*
+#
+# All data is kept in a hash called ::ta(tag,field)
+#   where tag = $filename_$startrec_$length
+# This allows several files to be analyzed simultaneously.
+# 
+# Valid fields in the ta hash
+#
+#    Input fields:
+#        filename: the filename
+#        start: the record the analysis starts at (assume 1 record == 1 ms).  This is equivalent to the time offset for the file.
+#        length: the number of records to analyze (assume 1 record == 1 ms).  This is equivalent to time in ms
+#        (Note that start and length are used as if all the interpolated records actually existed)
+#
+#    Data fields:
+#        file: the file pointer associated with the filename
+#        position: the current position of the file pointer in the file (based on existing, not interpolated, records)
+#        max: the value of the position variable that points to the last record in the file.
+#        filestarttime: the bmctime from the first record of the file.
+#        fileendtime: the bmctime from the last record of the file.
+#        starttime: absolute time specified by user parameter start
+#        endtime: absolute time specified by user parameter start+length
+#        buf: a queue of records prefetched from the file
+#
+#
+#--------------------------------------------------------------------
+
+#
+#Notes:
+#
+# Can we generalize so that it can do even a trace window? Parameters are trace start, # points
+#
+# Should I just interpolate traces before working on them?
+# - Otherwise, we need a layer of indirection to calculate correct points
+# - Should scan file to see how long it is. File size doesn't mean much. Use timestamp?
+
+#  InitializeAtPoint(trace,samplecount,length,windowsize)
+#  GetNextPoint()
+#    Get from prefetch buffer. If prefetch empty, get more and interpolate.
+#  Put next point into the window
+#  Let each analysis routine run. Send a tag(filename,pos,length) and the new data. tag to to cache it and let multiple routines run at same time on different traces.
+#
+#  Note: this could be generalized if we can start at an arbitrary point in the file and let the trace window potentially use this
+#
+
+# Default options
+set ::ta(options,binsize) 1
+
+proc ta_options {} {
+    set w .ta_options
+    if {[winfo exists $w]} {
+	focus $w
+	raise $w
+	return
+    } 
+    
+    toplevel $w
+    wm title $w "Trace analysis options"
+
+    # Add bin size parameter. Update graphs on <Tab> <Return> or up/down buttons
+    spinbox $w.binsize_v -textvariable ::ta(options,binsize) -width 2 -from 1 -to 99 -increment 1 -justify right -command ta_options_update
+    bind $w.binsize_v <Return> ta_options_update
+    bind $w.binsize_v <Tab> ta_options_update
+
+    label $w.binsize_l -text "Histogram bin size (W)" -anchor w
+    grid $w.binsize_v $w.binsize_l -sticky news
+}
+
+proc ta_options_update {} {
+    foreach s [find objects -isa amescope] {
+	$s analyze_update
+    }
+}
+
+
+# The K  constructor.
+# Google "tcl hot curry"
+#
+proc K {a b} {set a}
+
+
+# Replace a list inplace. Used to avoid copying list. Tremendous speedup over plain lreplace.
+#
+#
+proc lipreplace {_list first last args} {
+    upvar $_list list
+    set list [lreplace [K $list [set list ""]] $first $last $args]
+}
+
+# ta_records: analyze a group of records of a file
+#
+#
+proc ta_records {filename records callback} {
+
+    # make sure that records are interpolated
+    set complete_records [interpolate $records]
+
+    set tag [uid_create]
+
+    set first [lindex $complete_records 0]
+    set starttime [lindex $first 1]
+    set last [lindex $complete_records end]
+    set endtime [lindex $last 1]
+
+    if {$endtime - $starttime < 1} {return -code error "nothing to analyze"}
+
+    #set start and length to analyze
+    set file [open $filename r]
+    fconfigure $file -translation binary
+    set rec [trace_get_recnum $file 0]
+    set filestarttime [lindex $rec 1]
+    set start [expr $starttime - $filestarttime]
+    if {$start < 0} {return -code error "start before file"}
+    set length [llength $complete_records]
+    close $file
+
+    # Prime the pump by reading in 1 second of data into the
+    # history buffer.  If 1 second ago is before the start of the
+    # trace, then put all the data points from the beginning of the
+    # trace up until the start time into the buffer.
+
+    set ta_history 1000
+    set newstart [expr $start - $ta_history]
+    if {$newstart < 0} {set newstart 0}
+    set newlength [expr $length + $start - $newstart]
+
+    set streamid [streamOpen $filename $newstart $newlength]
+
+    for {set i $newstart} {$i < $start} {incr i} {
+	set rec [streamRead $streamid]
+	if {$rec eq ""} {break}
+	lappend ::ta($tag,history) $rec
+    }
+
+    ta_initialize $tag
+
+    foreach rec $complete_records {
+	
+	#Save record in vector
+	lappend ::ta($tag,history) $rec
+
+	#Calculate something
+	ta_process_record $tag $rec
+
+	#Cull vector
+	#NOTE: the strange use of K is for an in-place replace of the list without copying it
+	if {[llength $::ta($tag,history)] > 1000} {
+	    set ::ta($tag,history) [lreplace [K $::ta($tag,history) [set ::ta($tag,history) {}]] 0 0]
+	}
+	
+    }
+
+    eval $callback $tag
+
+    # remove storage for the stream
+    streamClose $streamid
+
+    # remove storage for analysis
+    array unset ::ta $tag*
+
+}
+
+# ta_file: open a file and analyze it
+#
+# Inputs:
+#     filename: the filename
+#     start: offset record number to begin analysis (counting interpreted records)
+#     length: number of records to analyze (including interpreted records)
+#
+proc ta_file {filename start {length end} {callback ta_print_results}} {
+
+    set tag [uid_create]
+
+    set ::ta($tag,start) $start
+    set ::ta($tag,length) $length
+    set ::ta($tag,callback) $callback
+
+    # Prime the pump by reading in 1 second of data into the
+    # history buffer.  If 1 second ago is before the start of the
+    # trace, then put all the data points from the beginning of the
+    # trace up until the start time into the buffer.
+
+    set ta_history 1000
+    set newstart [expr $start - $ta_history]
+    if {$newstart < 0} {set newstart 0}
+    if {$length eq "end"} {
+	set newlength "end"
+    } else {
+	set newlength [expr $length + $start - $newstart]
+    }
+
+    set streamid [streamOpen $filename $newstart $newlength]
+
+    for {set i $newstart} {$i < $start} {incr i} {
+	set rec [streamRead $streamid]
+	if {$rec eq ""} {break}
+	lappend ::ta($tag,history) $rec
+    }
+
+    ta_initialize $tag
+
+    while {[set rec [streamRead $streamid]] ne ""} {
+	
+	#Save record in vector
+	lappend ::ta($tag,history) $rec
+
+	#Calculate something
+	ta_process_record $tag $rec
+
+	#Cull vector
+	#NOTE: the strange use of K is for an in-place replace of the list without copying it
+	if {[llength $::ta($tag,history)] > 1000} {
+	    set ::ta($tag,history) [lreplace [K $::ta($tag,history) [set ::ta($tag,history) {}]] 0 0]
+	}
+	
+    }
+
+    # remove storage for the stream
+    streamClose $streamid
+
+    #callback
+    eval $callback $tag
+
+    # remove storage for analysis
+    array unset ::ta $tag*
+
+}
+
+proc ta_initialize {tag} {
+
+    # Init results
+    #
+    #
+    #
+    set ::ta($tag,maxpower1ms) 0
+    set ::ta($tag,minpower1ms) 9999
+    set ::ta($tag,maxtime1ms) 0
+    set ::ta($tag,mintime1ms) 0
+    set ::ta($tag,maxpower1msstepup) 0
+    set ::ta($tag,maxtime1msstepup) 0
+    set ::ta($tag,maxpower1msstepdown) 0
+    set ::ta($tag,maxtime1msstepdown) 0
+    set ::ta($tag,maxpower1s) 0
+    set ::ta($tag,maxtime1s) 0
+    set ::ta($tag,minpower1s) 9999
+    set ::ta($tag,mintime1s) 0
+    set ::ta($tag,maxpower64ms) 0
+    set ::ta($tag,maxtime64ms) 0
+    set ::ta($tag,minpower64ms) 9999
+    set ::ta($tag,mintime64ms) 0
+
+    # Histogram
+    set ::ta($tag,binsize) $::ta(options,binsize)
+    set ::ta($tag,bins) [expr int(310 / $::ta($tag,binsize))]
+    for {set i 0} {$i<$::ta($tag,bins)} {incr i} {set ::ta($tag,hist1ms,$i) 0}
+    set ::ta($tag,hist1mscount) 0
+    for {set i 0} {$i<$::ta($tag,bins)} {incr i} {set ::ta($tag,hist64ms,$i) 0}
+    set ::ta($tag,hist64mscount) 0
+    for {set i 0} {$i<$::ta($tag,bins)} {incr i} {set ::ta($tag,hist1s,$i) 0}
+    set ::ta($tag,hist1scount) 0
+
+}
+
+proc ta_process_record {tag rec} {
+    # Get the maximum 1ms power
+    if {[llength $::ta($tag,history)] >= 2} {
+	set prev1rec [lindex $::ta($tag,history) end-1]
+	set f_energy [lindex $prev1rec 8]
+	set s_energy [lindex $rec 8]
+	# Note: for AME 2.12, divide by 10.0 to convert 100 mJ units to 1 J units.
+	set power [expr ($s_energy - $f_energy) / 10.0]
+	if {$power > $::ta($tag,maxpower1ms) } {
+	    set ::ta($tag,maxpower1ms) $power
+	    set ::ta($tag,maxtime1ms) [lindex $rec 1]
+	} 
+	if {$power < $::ta($tag,minpower1ms) } {
+	    set ::ta($tag,minpower1ms) $power
+	    set ::ta($tag,mintime1ms) [lindex $rec 1]
+	}
+	
+	#put in histogram
+	set index [expr int($power / $::ta($tag,binsize))]
+	incr ::ta($tag,hist1ms,$index)
+	incr ::ta($tag,hist1mscount)
+    }
+    
+    # Get maximum stepup in 1ms power
+    if {[llength $::ta($tag,history)] >= 3} {
+	set prev2rec [lindex $::ta($tag,history) end-2]
+	set t_energy [lindex $prev2rec 8]
+	# For AME 2.10, divide by 10.0 to convert 100 mJ units to 1 J units.
+	set power2 [expr ($f_energy - $t_energy) / 10.0]
+	set stepup [expr $power - $power2]
+	set stepdown [expr 0 - $stepup]
+	if {$stepup > $::ta($tag,maxpower1msstepup)} {
+	    set ::ta($tag,maxpower1msstepup) $stepup
+	    set ::ta($tag,maxtime1msstepup) [lindex $rec 1]
+	}
+	if {$stepdown > $::ta($tag,maxpower1msstepdown)} {
+	    set ::ta($tag,maxpower1msstepdown) $stepdown
+	    set ::ta($tag,maxtime1msstepdown) [lindex $rec 1]
+	}
+	
+	
+    }
+    
+    # FIXME: what if we say start is 1001 with length of 3?
+    #  How do we feed the initial history so we can 
+    #  calculate average power for 1001, 1002, and 1003?
+    #
+    # Calculate the moving 1sec average
+    if {[llength $::ta($tag,history)] >= 1001} {
+	set prevrec [lindex $::ta($tag,history) end-1000]
+	set f_energy [lindex $prevrec 8]
+	set s_energy [lindex $rec 8]
+	set s_bmc_time [lindex $rec 1]
+	# For AME 2.10, divide by 10.0 to convert 100 mJ units to 1 J units.
+	set power [expr ($s_energy - $f_energy)/1000/ 10.0]
+	# save vector of average power for this segment for plotting
+	lappend ::ta($tag,v_power1s_power) $power
+	lappend ::ta($tag,v_power1s_time) $s_bmc_time
+	if {$power > $::ta($tag,maxpower1s)} {
+	    set ::ta($tag,maxpower1s) $power
+	    set ::ta($tag,maxtime1s) $s_bmc_time
+	}
+	if {$power < $::ta($tag,minpower1s)} {
+	    set ::ta($tag,minpower1s) $power
+	    set ::ta($tag,mintime1s) $s_bmc_time
+	}
+	
+	#put in histogram (DC avg)
+	set rcount [lindex $rec 13]
+	#put in histogram (DC avg)
+	# if rcount = 0x29, then that is when the average is created in BMC
+	if {($rcount & 0x3f) == 0x29} {
+	    set index [expr int($power / $::ta($tag,binsize))]
+	    incr ::ta($tag,hist1s,$index)
+	    incr ::ta($tag,hist1scount)
+	}
+
+	#NOTE: when low 6 bits of rcount is 0x29, then the 1ms moving average is updated.
+	
+    }
+    
+    # Calculate the moving 64ms average
+    if {[llength $::ta($tag,history)] >= 65} {
+	set prevrec [lindex $::ta($tag,history) end-64]
+	set f_energy [lindex $prevrec 8]
+	set s_energy [lindex $rec 8]
+	set s_bmc_time [lindex $rec 1]
+	# For AME 2.10, divide by 10.0 to convert 100 mJ units to 1 J units.
+	set power [expr ($s_energy - $f_energy)/64/10.0]
+	# save vector of average power for this segment for plotting
+	lappend ::ta($tag,v_power64ms_power) $power
+	lappend ::ta($tag,v_power64ms_time) $s_bmc_time
+	if {$power > $::ta($tag,maxpower64ms)} {
+	    set ::ta($tag,maxpower64ms) $power
+	    set ::ta($tag,maxtime64ms) $s_bmc_time
+	}
+	if {$power < $::ta($tag,minpower64ms)} {
+	    set ::ta($tag,minpower64ms) $power
+	    set ::ta($tag,mintime64ms) $s_bmc_time
+	}
+	
+	set rcount [lindex $rec 13]
+	#put in histogram (DC avg)
+	# if rcount = 0x21, then that is when the average is created in BMC
+	if {($rcount & 0x03f) == 0x21} {
+	    set index [expr int($power / $::ta($tag,binsize))]
+	    incr ::ta($tag,hist64ms,$index)
+	    incr ::ta($tag,hist64mscount)
+	}
+
+    }
+    
+}
+
+proc ta_print_results {tag} {
+    puts "maxpower was $::ta($tag,maxpower1ms) at $::ta($tag,maxtime1ms)"
+    puts "maxpower 64ms was $::ta($tag,maxpower64ms) at $::ta($tag,maxtime64ms)"
+    puts "maxpower step up $::ta($tag,maxpower1msstepup) at $::ta($tag,maxtime1msstepup)"
+    puts "maxpower step down $::ta($tag,maxpower1msstepdown) at $::ta($tag,maxtime1msstepdown)"
+
+    puts "histogram (W, 1ms, 64ms, 1s)"
+    for {set i 0} {$i<$::ta($tag,bins)} {incr i} {
+	puts -nonewline "[expr $i *$::ta($tag,binsize)] "
+	if {$::ta($tag,hist1mscount) != 0} {
+	    puts -nonewline "[expr double($::ta($tag,hist1ms,$i))/double($::ta($tag,hist1mscount))*100] "
+	} else {
+	    puts -nonewline "0 "
+	}
+	if {$::ta($tag,hist64mscount) != 0} {
+	    puts -nonewline "[expr double($::ta($tag,hist64ms,$i))/double($::ta($tag,hist64mscount))*100] "
+	} else {
+	    puts -nonewline "0 "
+	}
+	if {$::ta($tag,hist1scount) != 0} {
+	    puts -nonewline "[expr double($::ta($tag,hist1s,$i))/double($::ta($tag,hist1scount))*100] "
+	} else {
+	    puts -nonewline "0 "
+	}
+	puts ""
+    }
+
+}
+
+proc ta_get_record {tag} {
+
+    set l [llength $::ta($tag,buf)]
+    #puts "buff length is $l"
+
+    # Return the next element from the buffer
+    if { ([llength $::ta($tag,buf)] > 1) } {
+
+	# Some record in the buffer must match curtime by design
+	while {[llength $::ta($tag,buf)] != 0} {
+	    set rec [lindex $::ta($tag,buf) 0]
+	    set ::ta($tag,buf) [lreplace [K $::ta($tag,buf) [set ::ta($tag,buf) {}]] 0 0]
+	    set rectime [lindex $rec 1]
+	    if {$rectime == $::ta($tag,curtime)} {
+		#puts "return record with time = $rectime"
+		incr ::ta($tag,curtime)
+		return $rec
+	    } else {
+		#puts "skipping record with time = $rectime"
+	    }
+	}
+	return -code error "this should not happen"
+
+    } else {
+	
+	if {([llength $::ta($tag,buf)] == 1) && ($::ta($tag,curtime) == $::ta($tag,endtime))} {
+
+	    # if this is last record, then return it
+	    set rec [lindex $::ta($tag,buf) 0]
+	    set ::ta($tag,buf) [lreplace [K $::ta($tag,buf) [set ::ta($tag,buf) {}]] 0 0]
+	    #set ::ta($tag,buf) [lreplace $::ta($tag,buf) 0 0]
+	    set rectime [lindex $rec 1]
+	    if {$rectime == $::ta($tag,curtime)} {
+		incr ::ta($tag,curtime)
+		return $rec
+	    } else {
+		return -code error "this should not happen 2"
+	    }
+	}
+
+	# If already at end of file, return error
+	if {$::ta($tag,currec) > $::ta($tag,maxrec)} {return -code error}
+
+	# Add records until a condition is met: 1) 1000 records added. 2) end of file
+	# Get a bunch of records
+	for {set i 0} {$i < 1000} {incr i} {
+	    if {$::ta($tag,currec) > $::ta($tag,maxrec)} {break}
+
+	    set r [trace_get_recnum $::ta($tag,file) $::ta($tag,currec)]
+	    lappend ::ta($tag,buf) $r
+
+	    incr ::ta($tag,currec)
+	}
+
+	#puts "added $i records to buf"
+
+	# Interpolate
+	set ::ta($tag,buf) [interpolate $::ta($tag,buf)]
+
+	# return a record
+	return [ta_get_record $tag]
+	
+    }
+
+    
+}
+
+# Get a record from an open trace file
+#
+# Assume that record number exists. No range checking.
+#
+proc trace_get_recnum {file recnum} {
+    # multiply by 32 to convert from record number to byte offset
+    set offset [expr $recnum << 5]  
+    seek $file $offset start
+    set line [read $file 32]
+    set rec [data2rec $line]
+    return $rec
+}
+
+#--------------------------------------------------------------------
+#
+# Services for files that are formatted as AME traces
+#
+#--------------------------------------------------------------------
+
+# trace2ascii
+#   Convert a trace file to ASCII
+# in: input file, output file, start time offset (ms), length (ms)
+# output: none
+#
+# Note: start and length are optional.  If not provided, the entire
+#   file is converted.
+#
+proc trace2ascii {infilename outfilename {start 0} {length end}} {
+
+    set streamid [streamOpen $infilename $start $length]
+
+    if {[catch {set outfile [open $outfilename w]}]} {
+	puts stderr "Cannot open file $outfilename"
+	return
+    }
+
+    while {[set rec [streamRead $streamid]] ne ""} {
+	set line [::amescope_2_12::ascii_record $rec]
+	#convert to CSV format
+	regsub -all " " $line "," line
+	puts $outfile $line
+    }
+
+    streamClose $streamid
+    close $outfile
+}
+
+# trace2ascii_split
+#
+# Same as trace2ascii, but put each data field in a separate file
+#
+proc trace2ascii_split {infilename outfilename {start 0} {length end}} {
+
+    set fields 18
+
+    set ext(0) "_tsc"
+    set ext(1) "_bmc"
+    set ext(2) "_behind"
+    set ext(3) "_try"
+    set ext(4) "_cpu0"
+    set ext(5) "_cpu1"
+    set ext(6) "_cpu2"
+    set ext(7) "_cpu3"
+    set ext(8) "_energy"
+    set ext(9) "_temp0"
+    set ext(10) "_temp1"
+    set ext(11) "_debug0"
+    set ext(12) "_pcount"
+    set ext(13) "_tcount"
+    set ext(14) "_throttle0"
+    set ext(15) "_throttle1"
+    set ext(16) "_lpc15"
+    set ext(17) "_interpolated"
+
+    set ext(power) "_power"
+
+    set streamid [streamOpen $infilename $start $length]
+
+    for {set i 0} {$i < $fields} {incr i} {
+	if {[catch {set outfile($i) [open ${outfilename}$ext($i) w]}]} {
+	    puts stderr "Cannot open file ${outfilename}$ext($i)"
+	    return
+	}
+    }
+    if {[catch {set outfile(power) [open ${outfilename}$ext(power) w]}]} {
+	puts stderr "Cannot open file ${outfilename}$ext(power)"
+	return
+    }
+
+    set last_record {}
+
+    while {[set rec [streamRead $streamid]] ne ""} {
+
+	if {[llength $last_record] == 0} {
+	    set power 0
+	} else {
+	    set f_energy [lindex $last_record 8]
+	    set f_bmc_time [lindex $last_record 1]
+	    set s_energy [lindex $rec 8]
+	    set s_bmc_time [lindex $rec 1]
+	    # For AME 2.10, divide by 10.0 to convert 100 mJ units to 1 J units.
+	    set power [expr ($s_energy - $f_energy)/($s_bmc_time - $f_bmc_time)/10.0]
+	}
+	set last_record $rec
+
+	set line [::amescope_2_12::ascii_record $rec]
+	for {set i 0} {$i < $fields} {incr i} {
+	    set data [lindex $line $i]
+	    puts $outfile($i) $data
+	}
+	puts $outfile(power) $power
+    }
+
+    for {set i 0} {$i < $fields} {incr i} {
+	close $outfile($i)
+    }
+    close $outfile(power)
+
+    streamClose $streamid
+}
+
+
+#--------------------------------------------------------------------
+#
+# Stream Functions
+#
+#--------------------------------------------------------------------
+
+# streamOpen
+#  inputs: trace filename, millisecond offset into file to start, millisecond length
+#  returns: streamid
+#
+#
+proc streamOpen {filename {start 0} {length end}} {
+    set streamid [uid_create]
+    set ::stream($streamid,filename) $filename
+    set ::stream($streamid,start) $start
+    set ::stream($streamid,length) $length
+    set ::stream($streamid,buf) {}
+
+    # open the file and go to first record to analyze
+    set ::stream($streamid,file) [open $::stream($streamid,filename) r]
+    fconfigure $::stream($streamid,file) -translation binary
+
+    seek $::stream($streamid,file) 0 start
+    set ::stream($streamid,position) [tell $::stream($streamid,file)]
+    set ::stream($streamid,max) [expr [file size $::stream($streamid,filename)] - 32]
+    set ::stream($streamid,maxrec) [expr ($::stream($streamid,max) >> 5)]
+
+    # get initial bmctime
+    set rec [trace_get_recnum $::stream($streamid,file) 0]
+    set ::stream($streamid,filestarttime) [lindex $rec 1]
+
+    # get last bmctime
+    set rec [trace_get_recnum $::stream($streamid,file) $::stream($streamid,maxrec)]
+    set ::stream($streamid,fileendtime) [lindex $rec 1]
+
+    # adjust start and end time
+    set ::stream($streamid,starttime) [expr $::stream($streamid,filestarttime) + $start]
+    if {$length eq "end"} {
+	set ::stream($streamid,endtime) $::stream($streamid,fileendtime)
+	set length [expr $::stream($streamid,fileendtime) - $::stream($streamid,filestarttime) + 1]
+    } else {
+	set ::stream($streamid,endtime) [expr $::stream($streamid,starttime) + $length]
+    }
+
+    if {$::stream($streamid,endtime) > $::stream($streamid,fileendtime)} {set ::stream($streamid,endtime) $::stream($streamid,fileendtime)}
+
+    #check input variables
+    if {$::stream($streamid,starttime) < $::stream($streamid,filestarttime)} {return -code error "start before beginning"}
+    if {$::stream($streamid,starttime) > $::stream($streamid,fileendtime)} {return -code error "start after end of file"}
+
+    #move trace to starttime
+    set ::stream($streamid,curtime) $::stream($streamid,starttime)
+    set ::stream($streamid,currec) [stream_time2rec $streamid $::stream($streamid,starttime)]
+
+    set ::streamids($streamid) 1
+    return $streamid
+}
+
+# streamClose
+#    Close file and delete all storage for stream
+#
+proc streamClose {streamid} {
+    close $::stream($streamid,file)
+    array unset ::stream $streamid*
+    array unset ::streamids $streamid
+}
+
+# streamRead
+#    Return next item in stream
+proc streamRead {streamid} {
+    set l [llength $::stream($streamid,buf)]
+    #puts "buff length is $l"
+
+    # if we are beyond the end of the stream, then stop
+    if {$::stream($streamid,curtime) > $::stream($streamid,endtime)} {return ""}
+
+    # Return the next element from the buffer
+    if { ([llength $::stream($streamid,buf)] > 1) } {
+
+	# Some record in the buffer must match curtime by design
+	while {[llength $::stream($streamid,buf)] != 0} {
+	    set rec [lindex $::stream($streamid,buf) 0]
+	    set ::stream($streamid,buf) [lreplace [K $::stream($streamid,buf) [set ::stream($streamid,buf) {}]] 0 0]
+	    set rectime [lindex $rec 1]
+	    if {$rectime == $::stream($streamid,curtime)} {
+		#puts "return record with time = $rectime"
+		incr ::stream($streamid,curtime)
+		return $rec
+	    } else {
+		#puts "skipping record with time = $rectime"
+	    }
+	}
+	return -code error "this should not happen"
+
+    } else {
+	
+	if {([llength $::stream($streamid,buf)] == 1) && ($::stream($streamid,curtime) == $::stream($streamid,endtime))} {
+
+	    # if this is last record, then return it
+	    set rec [lindex $::stream($streamid,buf) 0]
+	    set ::stream($streamid,buf) [lreplace [K $::stream($streamid,buf) [set ::stream($streamid,buf) {}]] 0 0]
+	    #set ::stream($streamid,buf) [lreplace $::stream($streamid,buf) 0 0]
+	    set rectime [lindex $rec 1]
+	    if {$rectime == $::stream($streamid,curtime)} {
+		incr ::stream($streamid,curtime)
+		return $rec
+	    } else {
+		return -code error "this should not happen 2"
+	    }
+	}
+
+	# If already at end of file, return nothing
+	if {$::stream($streamid,currec) > $::stream($streamid,maxrec)} {return ""}
+
+	# Add records until a condition is met: 1) 1000 records added. 2) end of file
+	# Get a bunch of records
+	for {set i 0} {$i < 1000} {incr i} {
+	    if {$::stream($streamid,currec) > $::stream($streamid,maxrec)} {break}
+
+	    set r [trace_get_recnum $::stream($streamid,file) $::stream($streamid,currec)]
+	    lappend ::stream($streamid,buf) $r
+
+	    incr ::stream($streamid,currec)
+	}
+	# Interpolate
+	set ::stream($streamid,buf) [interpolate $::stream($streamid,buf)]
+	# return a record
+	return [streamRead $streamid]
+	
+    }
+
+    
+}
+
+
+# Find the nearest file record that corresponds to time.
+# If the time corresponds to a missing record, then return the record
+# with the highest time that is lower than the requested time (the preceeding record).
+#
+# Do a binary search on the records.
+#
+# Internal function
+proc stream_time2rec {streamid time} {
+    # set min and max beyond the end of the trace to avoid corner cases in binary search algorithm
+    set minrec -1
+    set maxrec [expr $::stream($streamid,maxrec) + 1]
+
+    set mintime $::stream($streamid,filestarttime)
+    set maxtime $::stream($streamid,fileendtime)
+
+    if {$time < $mintime || $time > $maxtime} {return -code error "out_of_trace_range"}
+
+    set file [open $::stream($streamid,filename) r]
+    fconfigure $file -translation binary
+
+    while {$maxrec - $minrec > 1} {
+
+	set probe [expr ($maxrec + $minrec) / 2]
+
+	set rec [trace_get_recnum $file $probe]
+	set probetime [lindex $rec 1]
+	
+	if {$probetime < $time} {
+	    #safely raise the bottom range
+	    #Never let mintime become greater than the time we are searching for
+	    set minrec $probe
+	} else {
+	    set maxrec $probe
+	    set maxtime $probetime
+	}
+
+    }
+
+    # Now either 1) maxtime points to the exact match or 2) mintime points to the preceeding record.
+    
+    #seek $file $maxrec start
+    #set line [read $file 32]
+    #set rec [data2rec $line]
+    #set maxtime [lindex $rec 1]
+    
+    if {$maxtime == $time} {
+	return $maxrec
+    } elseif {$mintime != -1} {
+	return $minrec 
+    } else {
+	print "there is an error in binary search"
+	return -code error "nothing_found"
+    }
+    
+}
+
+body amescope_2_12::get {what} {
+    switch $what {
+	scrollpage {return $scrollpage}
+	default {return -code error "unknown variable $what"}
+    }
+}

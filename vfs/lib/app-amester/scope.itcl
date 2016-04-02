@@ -1,0 +1,93 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+class amescope {
+    public proc open_file {}
+    public proc open_network {host}
+}
+
+body amescope::open_file {} {
+    global tmpdir
+    global lastdir
+
+    if {[info exists lastdir]} {
+	set dir $lastdir
+    } else {
+	set dir $tmpdir
+    }
+
+    set filename [tk_getOpenFile -defaultextension .ame -initialdir $dir -title "Open file..."]
+    if {$filename ne ""} {
+	set lastdir [file dirname $filename]
+	#set thescope [amescope_2_12 \#auto -fname $filename]
+	# Changing to amescope_2_16 - Sibi - 06/08/07
+	set thescope [amescope_2_16 \#auto -fname $filename]
+	$thescope make_window
+    }
+    
+}
+
+#
+# Collect amescope data from a network host
+#
+# host: a host object (e.g. a blade)
+body amescope::open_network {host} {
+    global tmpdir
+    set api_major unknown
+    set api_minor unknown
+    set version unknown
+
+    set name [$host cget -name]
+    set addr [$host cget -addr]
+    set ameclist [$host get ameclist]
+    if {$ameclist ne ""} {
+	set amec [lindex $ameclist 0]
+	set api_major [$amec get api_major]
+	set api_minor [$amec get api_minor]
+
+	switch ${api_major}_${api_minor} {
+	    2_0 {set version 2_10}
+	    2_1 {set version 2_10}
+	    2_2 {set version 2_10}
+	    2_3 {set version 2_10}
+	    2_4 {set version 2_10}
+	    2_5 {set version 2_10}
+	    2_6 {set version 2_10}
+	    2_7 {set version 2_10}
+	    2_8 {set version 2_10}
+	    2_9 {set version 2_10}
+	    2_10 {set version 2_10}
+	    2_11 {set version 2_12}
+	    2_12 {set version 2_12}
+	    2_13 {set version 2_12}
+	    2_14 {set version 2_12}
+	    2_15 {set version 2_12}
+	    2_16 {set version 2_16}
+	    default {
+		::amesterdebug::debug warn "Can't determine scope version to use. Unknown AME API version ${api_major}.${api_minor}. Using 2.12"
+		set version 2_12
+	    }
+	}
+    }
+
+    if {$version eq "unknown"} {
+	return 
+    } else {
+	#
+	# Create data collection thread if it doesn't exist
+	#
+	
+	set tmpamescopefile [file join $tmpdir lpcdata_$name]
+	# zero the file or create if it doesn't exist.
+	catch {
+	    set file [open $tmpamescopefile w]
+	    close $file
+	}
+	
+	# FIXME: should determine AME API of blade here.  For now, choose latest scope level.
+	
+	set thescope [amescope_${version} ::\#auto -fname $tmpamescopefile -hname $name -addr $addr -hostobj $host]
+	return $thescope
+    }
+}

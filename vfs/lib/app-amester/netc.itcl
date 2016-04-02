@@ -1,0 +1,1532 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+#-----------------------------------------------------------------------------
+#
+# NETC host procedures
+#
+# Note: Provides services to connect to and communicate with a POWER
+# FSP (flexible service processor) over a network connection via SSL
+# (made possible by the TLS library).
+# 
+# Note: Do not use this for OpenPOWER systems because they do not have
+# the FSP. Instead, use Amester's openpower command.
+# 
+# Debugging labels
+#    netc: general debugging (slow rate events)
+#    netcmsg: per-message debugging (fast rate events)
+#    netchealth: network health routine
+#-----------------------------------------------------------------------------
+
+package require tls
+
+if {$::options(gui)} {
+    .mbar.file.menu.connect add command -label "POWER system FSP..." -command "netcconnect \#auto"
+}
+ 
+class netcconnect {
+    public variable name "myfsp"
+    public variable addr ""
+    public variable password "FipSdev"
+    public variable close 1
+    public variable window ""
+    public variable port 30000
+    public variable timeout 120000
+    public variable tool "dev"
+    public variable certfile {fsp.crt}
+    public variable keyfile {fsp.key}
+    public variable pkpfile {fsp.pkp}
+
+    public method make_gui {}
+    public method connect {}
+
+    constructor args {
+	if {$::options(gui)} {make_gui}
+    }
+
+    destructor {
+	#delete GUI
+	if {$window ne ""} {
+	    destroy $window
+	}
+    }
+
+}
+
+body netcconnect::make_gui {} {
+
+    if {[winfo exists $window]} {
+	focus $window
+	raise $window
+	wm deiconify $window
+	return
+    }
+
+    regsub -all "::" .netcconnect_$this "" window
+
+    toplevel $window
+    wm title $window "Connect to POWER system FSP"
+    
+    label $window.name_l -text "System name" -anchor w
+    entry $window.name -textvariable [scope name]
+    grid $window.name_l $window.name -sticky news -row 0
+
+    label $window.addr_l -text "IP address" -anchor w
+    entry $window.addr -textvariable [scope addr]
+    grid $window.addr_l $window.addr -sticky news -row 1
+    bind $window.addr <Return> [code $this connect]
+
+    label $window.port_l -text "IP port" -anchor w
+    entry $window.port -textvariable [scope port]
+    grid $window.port_l $window.port -sticky news -row 2
+
+    label $window.tool_l -text "Tool (dev or MSGP)" -anchor w
+    entry $window.tool -textvariable [scope tool]
+    grid $window.tool_l $window.tool -sticky news -row 3
+
+    label $window.password_l -text "Password (for dev or HMC)" -anchor w
+    entry $window.password -textvariable [scope password]
+    grid $window.password_l $window.password -sticky news -row 4
+
+    label $window.timeout_l -text "Timeout (ms)" -anchor w
+    entry $window.timeout -textvariable [scope timeout]
+    grid $window.timeout_l $window.timeout -sticky news -row 5
+
+    label $window.cert_l -text "Certificate file" -anchor w
+    entry $window.cert -textvariable [scope certfile]
+    grid $window.cert_l $window.cert -sticky news -row 6
+
+    label $window.key_l -text "Private key file" -anchor w
+    entry $window.key -textvariable [scope keyfile]
+    grid $window.key_l $window.key -sticky news -row 7
+
+    label $window.pass_l -text "Password file" -anchor w
+    entry $window.pass -textvariable [scope pkpfile]
+    grid $window.pass_l $window.pass -sticky news -row 8
+
+    checkbutton $window.close -text "Close this window after connecting" -variable [scope close]
+    grid $window.close -row 10 -sticky w
+
+    button $window.connect -text "Connect" -command [code $this connect] -background lightblue
+    grid $window.connect -row 11 -sticky news
+}
+
+body netcconnect::connect {} {
+    set obj ""
+    set result ""
+    catch {$window.connect configure -state disabled}
+    if {[catch {
+	set obj [netc ::$name -addr $addr -netc_port $port -timeout $timeout -tool $tool -passwd $password -certfile $certfile -keyfile $keyfile -pkpfile $pkpfile]
+    } result]} {
+    puts "There was an error connecting: result = $result"
+	bgerror $result
+    } else {
+	if {![$obj isa netc]} {
+	    puts "There was an error connecting: obj= $obj"
+	} elseif {$close} {delete object $this}
+    }
+    catch {$window.connect configure -state normal}
+}
+
+
+
+class netc {
+
+    inherit host
+
+    constructor {args} {
+        ::amesterdebug::debug netc ">> ($this) constructor"
+        eval configure $args
+        if {$addr eq ""} {
+            return -code error "Missing a required parameter, -addr <IP address>"
+        }
+        if {$passwd eq ""} {
+            return -code error "Missing a required parameter, -passwd <password>"
+        }
+        if {$certfile eq ""} {
+            return -code error "Missing required parameter, -certfile <filepath>, self-signed certificate file."
+        }
+        if {$keyfile eq ""} {
+            return -code error "Missing required parameter, -keyfile <filepath>, private key file."
+        }
+        if {$pkpfile eq ""} {
+            return -code error "Missing required parameter, -pkpfile <filepath>, private key password file."
+        }
+        if {![file exists $certfile]} {
+            return -code error "Self-signed certificate file does not exist at $certfile"
+        }
+        if {![file exists $keyfile]} {
+            return -code error "Private key file does not exist at $keyfile"
+        }
+        if {![file exists $pkpfile]} {
+            return -code error "Private key password file does not exist at $pkpfile"
+        }
+
+	init
+    
+        ::amesterdebug::debug netc "<< ($this) constructor"
+    }
+    
+    destructor {
+        ::amesterdebug::debug netc ">> ($this) destructor"
+	::amesterdebug::debug destructor "$this destructor"
+        #FIXME: delete GUI associated with netc
+        #FIXME: delete all callbacks (bc holds them...)
+
+	#close socket and message timeouts
+	netc_close
+        # Cancel other pending afters
+        after cancel $ipmi_health_after
+	after cancel $netc_surveillance_after
+	foreach amec $ameclist {
+	    delete object $amec
+	}
+        ::amesterdebug::debug netc "<< ($this) destructor"
+    }
+
+    # Get basic info on netc (initialization)
+    public method aem_find_fw_instance {}
+    public method init {}
+
+    # Get OCC config info 
+    public method aem_find_occ_instance { rsaddr }
+
+    public variable passwd "FipSdev" {}
+    public variable tool "dev" {}
+
+    # System type (For determing systems. P8 system supports multiple ame objects (OCCs)
+    # in one node, whereas only one ame object in one node supported in older systems. 
+    public variable systype "unknown"
+    
+    #This is appended to the string "Amester" to
+    #form the unique NETC client id so that
+    #multiple Amesters may connect
+    public variable netc_id 0
+
+    protected variable ithread ""
+    protected method ipmi_thread_start {}
+    protected variable messageNum 1
+    protected variable next_tag 0
+
+
+    #
+    # System ID
+    #
+    public variable mtm "unknown"
+    public variable model "unknown"
+    public variable serial "unknown"
+
+    #
+    # Scope
+    #
+    protected method scope_make_window {}
+
+    #Performance metrics for workload graphs
+    protected variable perfmetric_latency 0
+    protected variable perfmetric_throughput 0
+
+    #GUI
+    public method make_gui {}
+    public method add_node_gui_menu {host rssa_list}
+
+    #Communication
+    protected variable wait_send_sync
+    protected variable wait_send_sync_databytes
+    protected variable wait_send_sync_status
+    public method ipmi_send_sync {rssa chan lun netfn cmd data {priority 1} }
+    protected method ipmi_send_sync_callback {myuid status databytes}
+    public method ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""} } 
+    public method ipmi_send {rssa chan lun netfn cmd data callback priority }
+    protected variable ipmi_msgq {}
+    protected variable inprogress
+    protected variable inprogress_q {}
+    public variable timeout 120000
+    protected method ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {to {}} {position end}}
+    protected method ipmi_dequeue {}
+    public method netc_process {}
+    protected method ipmi_health {}
+    public variable ipmi_health_period 10000 {ipmi_health}
+    protected variable ipmi_health_after 0
+
+    public method netc_surveillance {}
+    #25 minute polling
+    public variable netc_surveillance_period 1500000 {netc_surveillance}
+    public variable netc_surveillance_after 0
+    public variable netc_status "disconnected"
+    public variable netc_sock 0
+    public variable netc_port 30000
+    public variable netc_open_after 0
+    public method netc_open {}
+    public method netc_close {}
+    public method netc_timeout {}
+    public method netc_timeout_debug {}
+    public method getCertificatePrivateKeyPassword {}
+    # Required files for authentication to FSP
+    public variable certfile {fsp.crt}
+    public variable keyfile {fsp.key}
+    public variable pkpfile {fsp.pkp}
+    
+    protected method netc_send {packet {tag {}}}
+    protected method netc2.0_send {tag rssa chan lun netfn cmd data}
+    protected method netc2.0_format_ipmi_packet {rssa chan lun netfn cmd data}
+    protected variable ipmi_sess_seq_in 0
+    protected variable ipmi_sess_seq_out 0
+    protected variable ipmi_sess_id 0
+
+    #AME
+    #List of AME Components on host
+    protected variable ameclist {}
+    protected variable fwlist {}
+    public method get {what args}
+    
+    # NETC Message Functions
+    protected method createNetcMessage {function operation flag {data ""}}
+    public method sendGetNodeConfig {}
+    public method processGetNodeConfig {data}
+    protected method sendGetCecName { sock }
+    protected method sendAuthenticatePlatformPassword { sock password } 
+    protected method sendPexCmd { sock cmd } 
+    protected method sendGetEnclosureTypeAndInterfaceVersionNumberV3 { sock } 
+    public method sendSetHMCPollingFrequency {{status 1} {period {}} }
+    protected method encodeString { str } 
+    protected method readMsg { sock } 
+    protected method processIpmi { ncdata }
+
+    # Timing
+    # Track time between sending messages out over network
+    protected variable data_last_ipmideqlatency [clock clicks -millisecond]
+
+
+
+    #Debugging
+    public method print_inprogress {}
+    public method print_queue {}
+
+    #IPMI
+    public variable ipmi_cache_enable 1
+    common ipmi_cache
+    #NOTE: Use of "common ipmi_cache" requires that all ipmi commands using the ipmi_send_sync_cache command
+    #put AME API firmware level in the "tag" input parameter so that systems using different firmware levels can
+    #connected to at the same time without a cache collision.
+}
+
+
+body netc::aem_find_occ_instance { rsaddr } {
+	
+    set _occlist {}
+	    
+    #Query for number of OCC instance (number of OCC on a node)
+    
+    set _node [expr $rsaddr - 20]
+    ::amesterdebug::debug netc "($this) Query for number of OCC instances on node $rsaddr, converted node number: $_node"
+    set _result [ipmi_send_sync $rsaddr 00 $_node 2e 3d [binary format "H*" 0000000000]]
+    set _status [lindex $_result 0]
+    set _data [lindex $_result 1]
+    binary scan $_data "H*" _all
+    ::amesterdebug::debug netc "netc::aem_find_occ_instance: data = $_all on node $rsaddr"
+
+    #On error, return empty list
+    if {$_status} {
+	::amesterdebug::debug netc "netc::aem_find_occ_instance: returned status=$_status on node $rsaddr"
+	return {}
+    } 
+
+    binary scan $_data "c" _instances
+    if {$_instances == 0} {
+	::amesterdebug::debug netc "($this) No OCC instance found ($_n) in response"
+	return $_occlist
+    }
+     
+    ::amesterdebug::debug netc "OCC instances = $_instances"
+        
+    # Process OCC list
+    # Note: The first byte in the returned data is the total number of OCCs in this node, 
+    # the rest of the data is the list of OCC instances. Each OCC number occupies one byte.
+    set _occlist {}
+    for {set _i 0} {$_i < $_instances} {incr _i} {
+        set _index [expr $_i + 1]
+        set _occ [string index $_data $_index]
+        binary scan $_occ "H2" _occNum        
+        ::amesterdebug::debug netc "(this): occ $_i: 0x$_occNum"
+        lappend _occlist $_occNum 
+        ::amesterdebug::debug netc "occlist = $_occlist"   
+    }    
+     return $_occlist   
+ }
+ 
+ 	
+body netc::aem_find_fw_instance {} {
+    set _fwlist {}
+
+    #Query for number of firmware instances (number of TPMD)
+    ::amesterdebug::debug netc "($this) Query for number of TPMD instances"
+    set _result [ipmi_send_sync 20 00 00 2e 82 [binary format "H*" 200000000000]]
+    set _status [lindex $_result 0]
+    set _data [lindex $_result 1]
+    binary scan $_data "H*" _all
+    ::amesterdebug::debug netc "($this) init: find_firmware_instances data = $_all"
+
+    if {$_status} {
+	::amesterdebug::debug netc "($this) find_firmware_instances returned status=$_status"
+	return $_fwlist
+    }
+    set instances 0
+    set _n [binary scan $_data "H6cccH2H2" _iana _instances _vermajor _verminor _handle _sdrrid]
+    if {$_n != 6} {
+	::amesterdebug::debug netc "($this) wrong number of items ($_n) in response"
+	return $_fwlist
+    }
+
+    ::amesterdebug::debug netc "   iana = $_iana"
+    ::amesterdebug::debug netc "   instances = $_instances"
+    ::amesterdebug::debug netc "   version = ${_vermajor}.${_verminor}"
+    ::amesterdebug::debug netc "   handle = 0x$_handle"
+    ::amesterdebug::debug netc "   SDRR id = 0x$_sdrrid"
+    
+    # Assume that rssa (responder address) should be 0 to instances-1.
+    # (AME Pass-thru does not use the handle, just TPMD number)
+    set _fwlist {}
+    for {set _i 0} {$_i < $_instances} {incr _i} {
+	::amesterdebug::debug netc "($this) processing firmware instance $_i"
+	set _result [ipmi_send_sync 20 00 00 2e 82 [binary format "H*cH*" 200000 $_i 0000]]
+	set _status [lindex $_result 0]
+	set _data [lindex $_result 1]
+	binary scan $_data "H*" _all
+	::amesterdebug::debug netc "($this) init: find_firmware_instances data = $_all"
+	if {$_status} {
+	    ::amesterdebug::debug netc "($this) find_firmware_instances returned status=$_status"
+	    break
+	}
+	set _n [binary scan $_data "H6cccH2H2" _iana _instances _vermajor _verminor _handle _sdrrid]
+	if {$_n != 6} {
+	    ::amesterdebug::debug netc "($this) wrong number of items ($_n) in response"
+	    break
+	}
+	::amesterdebug::debug netc "   iana = $_iana"
+	::amesterdebug::debug netc "   instances = $_instances"
+	::amesterdebug::debug netc "   version = ${_vermajor}.${_verminor}"
+	::amesterdebug::debug netc "   handle = 0x$_handle"
+	::amesterdebug::debug netc "   SDRR id = 0x$_sdrrid"
+
+	lappend _fwlist $_handle
+	::amesterdebug::debug netc "fwlist = $_fwlist"
+    }
+    return $_fwlist
+}
+
+#Initialize netc object and start network connection to POWER FSP
+body netc::init {} {
+    ::amesterdebug::debug netc ">> ($this) init"
+    if {$::options(gui)} {
+	make_gui
+    }
+
+    set occlist {}
+  
+    #Open connection
+    ipmi_health
+
+    #Determine if P7 or P8 style should be used.
+    #The aem_find_occ_instance command should be available on P8-style systems.
+    set fwlist [aem_find_fw_instance]
+    set occlist [aem_find_occ_instance [lindex $fwlist 0]]
+    if {$occlist == {}} {
+	set systype "P7"
+    } else {
+	set systype "P8"
+    }
+
+    ::amesterdebug::debug netc "($this) init: Found systype = $systype"
+    
+    #Initialize by system type
+    switch "$systype" {
+	P8 {
+	    #For P8 we need to traverse all 4 possible nodes. 
+	    #The _possible_nodes list is hexidecimal rsaddr values in string format for all nodes
+	    set _possible_nodes [list 20 21 22 23]
+	    #aem_find_fx_instance is not supported on POWER8 (only returns first drawer) so
+	    #we will recalculate it here.
+	    set fwlist {}
+	    #Sift through the list of Nodes and remove those that don't exist.
+	    #Note: Traversing list backwards to avoid removing the wrong entry.
+	    foreach nodeValue $_possible_nodes {
+		set occlist [aem_find_occ_instance $nodeValue]
+		if {$occlist == {}} {
+		    ::amesterdebug::debug netc "($this) Failed to get occlist for node.  Skipping node $nodeValue"
+		} else {
+		    ::amesterdebug::debug netc "Found node $nodeValue with OCC: $occlist"
+		    #Node exists
+		    lappend fwlist $nodeValue
+		    #Add menu for each node so that we have a place to place each OCC
+		    if {$::options(gui)} {
+			add_node_gui_menu $name [expr $nodeValue - 20]
+		    }
+		    set ameclist [concat $ameclist [ame::init_ameocc_objects $name $nodeValue $occlist]]                     
+		}
+	    }
+	    ::amesterdebug::debug netc "List of available nodes: $fwlist"
+	    
+	}
+	default {
+	    #POWER7
+	    ::amesterdebug::debug netc "($this) init: found firmware instances: $fwlist"
+	    set ameclist [ame::init_ame_objects $name $fwlist]
+	}
+    }
+
+    if {![llength $fwlist]} {
+	::amesterdebug::debug netc "($this) init: no AEM firmware instances found"
+    }
+
+
+    if {$::options(gui)} {
+	host_window_update a b c
+    }
+    ::amesterdebug::debug netc "<< ($this) init"
+    return     
+}
+
+body netc::get {what args} {
+    switch $what {
+        ameclist {return [lindex $ameclist [lindex $args 0]]}
+        amec {return [lindex $ameclist 0]}
+        nodelist {return $fwlist}
+        netc_status {return $netc_status}
+        default {return -code error "unknown command for amec: $what $args"}
+    }
+}
+
+body netc::make_gui {} {
+    ::amesterdebug::debug gui ">> ($this) make_gui $name"
+
+    # Add all sensor labels
+    # These are the stats that are created as labels
+    set host_label_list [list {name} {addr} {ameutilport} {link} {mtm} {model} {serial}]
+
+    foreach {key}  $host_label_list  {
+        if {![info exists ::host_stats_anchor($key)]} {
+            set anchor e
+        } else {
+            set anchor $::host_stats_anchor($key)
+        }
+        host_window_add $name $key [label .host.c.f.${name}_${key} -textvariable [scope $key] -anchor $anchor -font $::fixedfont] $key
+    }
+    ::amesterdebug::debug gui "<< ($this) make_gui"
+}
+
+#
+# NETC Communication
+#
+
+# ipmi_send_sync
+#
+# This is a command to send an ipmi cmd to a netc.
+# This command waits for a response, prints it, then returns.
+
+# Problem: Cannot be called from construtor (or before netc is completely constructed, including all sensor and ame objects) since the vwait of [scope var] will refer to an object that doesn't yet exist.  Need to use global scope, or scope of a constructed object.  We now use a global for the vwait.  An alternative would be to have a vwait object.
+
+body netc::ipmi_send_sync {rssa chan lun netfn cmd data {priority 1} } {
+    ::amesterdebug::debug ipmi "ipmi_send_sync: rssa:$rssa, chan:$chan, lun:$lun, netfn:$netfn, cmd:$cmd"
+    switch "$systype" {
+        P8 {
+	    set data [binary format ca* $lun $data]
+        }
+        default {
+            #do nothing
+        }
+    }
+    set myuid [uid_create]
+    set callback "ipmi_send_sync_callback $myuid \$status \$databytes"
+    ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
+    # The "exists" check below is required since netc can fake some responses and
+    # set the vwait variable sooner than we can check it!
+    if {![info exists ::wait_send_sync($myuid)]} {
+	::vwait ::wait_send_sync($myuid)
+    }
+    array unset ::wait_send_sync $myuid
+    set status $wait_send_sync_status($myuid)
+    set databytes $wait_send_sync_databytes($myuid)
+    array unset wait_send_sync_status $myuid
+    array unset wait_send_sync_databytes $myuid
+    return [list $status $databytes]
+}
+
+#body netc::ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}} {
+#    set myuid [uid_create]
+#    set callback "ipmi_send_sync_callback $myuid \$status \$databytes"
+#    ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
+#    ::vwait [scope wait_send_sync($myuid)]
+#    array unset wait_send_sync $myuid
+#    set myname wait_send_sync_status($myuid)
+#    eval set status $$myname
+#    set myname wait_send_sync_databytes($myuid)
+#    eval set databytes $$myname
+#    array unset wait_send_sync_status $myuid
+#    array unset wait_send_sync_databytes $myuid
+#    return [list $status $databytes]
+#}
+
+body netc::ipmi_send_sync_callback {myuid status databytes} {
+    set wait_send_sync_status($myuid) $status
+    set wait_send_sync_databytes($myuid) $databytes
+    set ::wait_send_sync($myuid) 1
+}
+
+body netc::ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""} } {
+    #Ignore channel and lun in cache. Assume all OCC use same AME API and AME version
+    set index [binary format "a*a*H2H2H2a*" $mtm $tag $rssa $netfn $cmd $data]
+    if {$ipmi_cache_enable && ![info exists ipmi_cache($index)]} {
+	set ipmi_cache($index) [ipmi_send_sync $rssa $chan $lun $netfn $cmd $data $priority ]
+    } else {
+	#Print any debugging for results returned from cache
+	if {[::amesterdebug::set ipmi]} {
+	    binary scan $data "H*" all
+	    ::amesterdebug::debug ipmi "IPMI cache query ($this): rssa=$rssa chan=$chan lun=$lun netfn=$netfn cmd=$cmd data_len=[string length $data] data=$all"
+	    set status [lindex $ipmi_cache($index) 0]
+	    set databytes [lindex $ipmi_cache($index) 1]
+	    binary scan $databytes "H*" all
+	    ::amesterdebug::debug ipmi "IPMI cache response ($this): status=$status data=$all"
+	}
+    }
+    return $ipmi_cache($index)
+}
+
+body netc::ipmi_send {rssa chan lun netfn cmd data callback priority } {
+    switch "$systype" {
+        P8 {
+	    set data [binary format ca* $lun $data]
+        }
+        default {
+            #do nothing
+        }
+    }
+    ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
+}
+
+# based on bc::net_send_msg
+#
+#
+body netc::ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {to {}} {position end}} {
+
+    #Do we still need tags?
+    set tag 0
+    incr next_tag
+
+    if {$to eq {}} {set to $timeout}
+
+    set item [list $priority $tag $callback $to $rssa $chan $lun $netfn $cmd $data]
+    set ipmi_msgq [linsert $ipmi_msgq $position $item]
+
+    # sort message queue by priority
+    # note: messages of the same priority remain in the same order.
+    #   Therefore, inserting into the front or end of the msgq will add the
+    #   message at the beginning or end of messages with the same priority.
+    # 
+    set ipmi_msgq [lsort -integer -index 0 $ipmi_msgq]
+
+    # Process right away, if no messages are waiting
+    if {[llength $ipmi_msgq] == 1} {
+	ipmi_dequeue
+    }    
+}
+
+# ipmi_dequeue
+# This function checks if 1) we are ready to send out a message to the host
+# and 2) there is a message waiting to be sent. If so, send it.
+# If not, just return.
+# Only 1 message is sent to the host at a time today. That is all TPMD is
+# capable of doing.
+#
+body netc::ipmi_dequeue {} {
+    #::amesterdebug::debug netc ">> ($this) ipmi_dequeue"
+    # Do not start new requests if network traffic is paused
+    if {!$::network} {return}
+    # Do nothing if we are waiting on a response from host.
+    if {[llength $inprogress_q]} {return}
+    if {![llength $ipmi_msgq]} {
+	return
+    }
+    if {$netc_status ne "connected"} {
+	::amesterdebug::debug netc "($this) error in ipmi_dequeue; not connected ($netc_status)"
+	return
+    }
+
+    #print_queue
+    #print_inprogress
+
+
+    set item [lindex $ipmi_msgq 0]
+    set priority [lindex $item 0]
+    set tag [lindex $item 1]
+    set callback [lindex $item 2]
+    set to [lindex $item 3]
+    set rssa [lindex $item 4]
+    set chan [lindex $item 5]
+    set lun [lindex $item 6]
+    set netfn [lindex $item 7]
+    set cmd [lindex $item 8]
+    set data [lindex $item 9]
+    
+    if {[info exists inprogress($tag,tag)]} {
+	::amesterdebug::debug netcmsg "($this) Message for $tag pending with same tag. ${netfn}${cmd}${data}"
+	return
+    }
+
+    #::amesterdebug::debug netc "($this) dequeue: tag=$tag msg=${netfn}${cmd}${data}"
+    set inprogress($tag,tag) $tag
+    set inprogress($tag,priority) $priority
+    set inprogress($tag,callback) $callback
+    set inprogress($tag,timeout) $to
+    set inprogress($tag,rssa) $rssa
+    set inprogress($tag,chan) $chan
+    set inprogress($tag,lun) $lun
+    set inprogress($tag,netfn) $netfn
+    set inprogress($tag,cmd) $cmd
+    set inprogress($tag,data) $data
+    lappend inprogress_q $tag
+
+    set ipmi_msgq [lreplace $ipmi_msgq 0 0]
+
+    if {$to != 0} {
+        set inprogress($tag,after) [after $to [code $this netc_timeout ]]
+        #::amesterdebug::debug after "after set $inprogress($tag,after) for $this"
+    }
+
+    netc2.0_send $tag $rssa $chan $lun $netfn $cmd $data
+
+    ${name}_ipmimsgcount add_data 1
+    #::amesterdebug::debug netc "<< ($this) ipmi_dequeue: tag=$tag msg=${netfn}${cmd}"
+}
+
+# Not used with the self-signed certificates, but keep around in case
+# we need it
+#proc tls::password {} {
+#    set pass "unknown"
+#    return $pass
+#}
+
+# Build a NETC message
+body netc::createNetcMessage {function operation flag {data ""}} {
+    ::amesterdebug::debug netcmsg ">> ($this) createNetcMessage"
+  
+    # Calculate the # of pad bytes for this message  
+    set pads 0
+    if { [string length $data] < 16 } {
+        set pads [expr 16 - [string length $data]] 
+    }
+
+    # Set the NETC message fields
+    set eyecatcher [binary format "H6" DECAFF]
+    set version    [binary format "H2" 00]
+    set length     [binary format "I" [expr 24 + [string length $data] + $pads]]
+    set callerId   [binary format "I"  $messageNum]
+    incr messageNum
+    # set callerId   [binary format "H8" 31323334]
+    set func       [binary format "H4" $function] 
+    set flags      [binary format "H2" $flag]
+    set pad        [binary format "c"  $pads]
+    set seq        [binary format "I"  [expr round(rand() * 2147483647)]]
+    # set seq        [binary format "H8" 11223344]
+    set op         [binary format "H4" $operation] 
+    set status     [binary format "H4" 0000] 
+
+    # Builds the NETC message packet, w/o pads
+    if { $pads > 0 } {
+        set netcMessage $eyecatcher$version$length$callerId$func$flags$pad$seq$op$status$data[binary format "H[expr 2 * $pads]" 0]
+    } else {
+        set netcMessage $eyecatcher$version$length$callerId$func$flags$pad$seq$op$status$data
+    }
+
+    # Return the data
+    ::amesterdebug::debug netcmsg "<< ($this) createNetcMessage"
+    return $netcMessage
+}
+
+# Create IPMI packet
+body netc::netc2.0_format_ipmi_packet {rssa chan lun netfn cmd data} {
+    binary scan $data "H*" all
+    ::amesterdebug::debug ipmi "IPMI sent ($this): netfn=$netfn cmd=$cmd data=$all"
+    ::amesterdebug::debug ipmi "data length = [string length $data] bytes"
+    set netfnbyte [binary format "H2" $netfn]
+    binary scan $netfnbyte "c" netfnvalue
+    set lunbyte [binary format "H2" $lun]
+    binary scan $lunbyte "c" lunvalue
+    ::amesterdebug::debug netcmsg "($this) lun=$lunvalue netfn=$netfnvalue"
+    set netfnlun [expr ($netfnvalue << 2) | $lunvalue]
+    set check1 [expr - ((0x${rssa} + $netfnlun) % 256)]
+    set swid 0
+    set swseq 0
+    set check2 0
+    set datastring [binary format "ccH2a*" $swid $swseq $cmd $data]
+    #for {set i 0} {$i < [string length $datastring]} {incr i} {
+    #binary scan $datastring "@${i}c" byte
+    #::amesterdebug::debug netc [format "byte=%02x" $byte]
+    #incr check2 $byte
+    #}
+    binary scan $datastring "c*" bytelist
+    foreach byte $bytelist {
+	incr check2 $byte
+    }
+    set check2 [expr - ($check2 % 256)]
+    set ipmipayload [binary format "H2cca*c" $rssa $netfnlun $check1 $datastring $check2]
+
+    # Update length
+    set len [string length $ipmipayload]
+    ::amesterdebug::debug netcmsg "($this) ipmi payload is $len bytes"
+    set reserved [binary format "H4" 0000]
+    set length [binary format "S" [string length $ipmipayload]]
+
+    # Create NETC message
+    set netcMessage [createNetcMessage 0005 90E1 08 $reserved$length$ipmipayload]
+    return $netcMessage
+}
+
+# Send an IPMI command
+body netc::netc2.0_send {tag rssa chan lun netfn cmd data} {
+    set outmsg [netc2.0_format_ipmi_packet $rssa $chan $lun $netfn $cmd $data]
+    ::amesterdebug::debug netcmsg "($this) NetFn = $netfn, Cmd = $cmd"
+    if { $netfn == 6 && $cmd == 1 } {
+        ::amesterdebug::debug netcmsg "($this) Faking out the IPMI response to get device ID"
+	set inprogress($tag,start_time_ms) [clock clicks -milliseconds]
+        processIpmi [binary format H* "0000000900ec1420003b00e4a5"]
+    } else { 
+        netc_send $outmsg  $tag
+	${name}_ipmibytestx add_data [string length $data]
+    }
+}
+
+# Send NETC message
+body netc::netc_send {request {tag {}}} {
+    #::amesterdebug::debug netcmsg ">> ($this) netc_send"
+    
+    # Debug  
+    #binary scan $request "H*" packet
+    #::amesterdebug::debug netc "($this) Sending packet $packet"
+
+    # Write the data to the socket
+    if {[catch {puts -nonewline $netc_sock $request} result]} {
+        ::amesterdebug::debug netc "($this) netc_send error; failed socket write: $result"        
+    } else {
+        # Everything ok! 
+    }
+
+    #Mark time when message is sent
+    if {$tag ne {}} {
+	set now [clock clicks -millisecond]
+	set inprogress($tag,start_time_ms) $now
+	${name}_ipmideqlatency add_data [expr $now - $data_last_ipmideqlatency]
+	set data_last_ipmideqlatency $now
+    }
+    
+    #::amesterdebug::debug netcmsg "<< ($this) netc_send"
+}
+
+##############################################################################
+# NETC Commands
+##############################################################################
+
+# Send the "Get Node Config" command
+body netc::sendGetNodeConfig {} {
+    #Note: this command does not work on HV32
+    ::amesterdebug::debug netc ">> ($this) sendGetNodeConfig"
+    set netcMessage [createNetcMessage 001c 8116 08 [binary format "H*" 01]]
+    netc_send $netcMessage
+    ::amesterdebug::debug netc "<< ($this) sendGetNodeConfig"
+}
+
+body netc::processGetNodeConfig {data} {
+    ::amesterdebug::debug netc ">> ($this) processGetNodeConfig"
+    binary scan $data "SS" offset n  
+    ::amesterdebug::debug netc "number of nodes: $n"
+    for {set i 0} {$i < $n} {incr i} {
+	::amesterdebug::debug netc "processing node $i"
+	binary scan $data "@${offset}SSccSS" length nodeid reserved1 nodelocationcodetype reserved2 nodelocationcodelen
+	set length [expr $length & 0xffff]
+	set nodeid [expr $nodeid & 0xffff]
+	set nodelocationcodetype [expr $nodelocationcodetype & 0xff]
+	set nodelocationcodelen [expr $nodelocationcodelen & 0xffff]
+	::amesterdebug::debug netc "length = $length"
+	::amesterdebug::debug netc "node id = $nodeid"
+	::amesterdebug::debug netc "node location code type = $nodelocationcodetype"
+	::amesterdebug::debug netc "node location code len = $nodelocationcodelen"
+	set index [expr $offset + 10]
+	binary scan $data "@${index}a${nodelocationcodelen}H8H4H4H4H4H8" nodelocationcode nodestatusbitmask coldrepair addavailability hotrepair hotupgrade hotupgradesupportedfru
+	::amesterdebug::debug netc "node location code = $nodelocationcode"
+	::amesterdebug::debug netc "node status bit mask = 0x$nodestatusbitmask"
+	::amesterdebug::debug netc "cold repair availability modifier = 0x$coldrepair"
+	::amesterdebug::debug netc "add availability = 0x$addavailability"
+	::amesterdebug::debug netc "hot repair = 0x$hotrepair"
+	::amesterdebug::debug netc "hot upgrade = 0x$hotupgrade"
+	::amesterdebug::debug netc "hot upgrade supported fru = 0x$hotupgradesupportedfru"
+	incr offset $length
+    }
+}
+
+# Send the "Get CEC Name" command
+body netc::sendGetCecName { sock } {
+    ::amesterdebug::debug netc ">> ($this) sendGetCecName"
+    sendMsg $sock 0005 1104 08 
+    ::amesterdebug::debug netc "<< ($this) sendGetCecName"
+}
+
+# Send the command to authenticate the connection
+body netc::sendAuthenticatePlatformPassword { sock password } {
+    ::amesterdebug::debug netc ">> ($this) sendAuthenticatePlatformPassword"
+    set data [encodeString $password] 
+    binary scan $data H* debug
+    ::amesterdebug::debug netc $debug
+    set netcMessage [createNetcMessage 0007 7412 08 $data]
+    netc_send $netcMessage
+    ::amesterdebug::debug netc "<< ($this) sendAuthenticatePlatformPassword"
+}
+
+# Send IPMI command
+body netc::sendPexCmd { sock cmd } {
+    ::amesterdebug::debug netc ">> ($this) sendPexCmd"
+    set ipmi [binary format "H*" $cmd]
+    set reserved [binary format "H4" 0000]
+    set length [binary format "S" [string length $ipmi]]
+    set data $reserved$length$ipmi
+    sendMsg $sock 0005 90E1 08 $data
+    ::amesterdebug::debug netc "<< ($this) sendPexCmd"
+}
+
+# Send initial handshake command
+body netc::sendGetEnclosureTypeAndInterfaceVersionNumberV3 { sock } {
+    ::amesterdebug::debug netc ">> ($this) sendGetEnclosureTypeAndInterfaceVersionNumberV3"
+    set version  [binary format "H8" 00000003]
+    set toolstr     [binary format "a4" $tool]
+    set clientId [encodeString Amester${netc_id}] 
+    set major    [binary format "H4" 0005]
+    set minor    [binary format "H4" 0000]
+    set data $version$toolstr$clientId$major$minor
+    set netcMessage [createNetcMessage 0007 0002 08 $data]
+    netc_send $netcMessage
+    ::amesterdebug::debug netc "<< ($this) sendGetEnclosureTypeAndInterfaceVersionNumberV3"
+}
+
+# Set HMC Polling Frequency (for surveillance of active connection status)
+# Status: 1=connected, 2=temporary disconnect, 3=permanent disconnect, 4=error disconnect
+body netc::sendSetHMCPollingFrequency {{status 1} {period {}} } {
+    ::amesterdebug::debug netc ">> ($this) sendSetHMCPollingFrequency"
+    #Default to 30 minutes between surveillance commands
+    if {$period eq {}} {set period 1800}
+    set data [binary format "Scc" $period 0 $status]
+    set netcMessage [createNetcMessage 0005 0009 08 $data]
+    netc_send $netcMessage
+    ::amesterdebug::debug netc "<< ($this) sendSetHMCPollingFrequency"
+}
+
+
+##############################################################################
+# NETC Command Helpers
+##############################################################################
+
+# Encode a string into NETC message data
+body netc::encodeString { str } {
+    ::amesterdebug::debug netcmsg ">> ($this) encodeString"
+    set pads [expr (4 - ([string length $str] + 2 + 1) % 4) % 4]
+    set length [expr [string length $str] + 2 + 1 + $pads]
+    set lengthArg [binary format "S" $length]
+    set strArg [binary format "a*H2H[expr $pads * 2]" $str 0 0]
+    set data $lengthArg$strArg
+    binary scan $data H* debug
+    ::amesterdebug::debug netcmsg "($this) Encoded string = $debug"
+    ::amesterdebug::debug netcmsg "<< ($this) encodeString"
+    return $data
+}
+
+##############################################################################
+# NETC Communication
+##############################################################################
+
+# Read a full packet off the connection
+body netc::readMsg { sock } {
+    ::amesterdebug::debug netcmsg ">> ($this) readMsg"
+    set response {}
+
+    # Read the data from the socket
+    if {[catch {set response [read $sock 8]} result]} {
+        ::amesterdebug::debug netc "($this) readMsg error; can't read packet: $result"
+        return
+    }   
+    set n [binary scan $response "H8IH*" eye responselen all]
+    if {$n != 3} {
+	binary scan $response "H*" all
+	::amesterdebug::debug netc "($this) readMsg bad response. n=$n bytes=$all"
+	netc_close
+	netc_open
+	return
+    }
+
+    ::amesterdebug::debug netcmsg "($this) eye = $eye"
+    ::amesterdebug::debug netcmsg "($this) Length = $responselen"
+    ::amesterdebug::debug netcmsg "($this) packet = $all"
+    if { $responselen > 8 } {
+        if {[catch {set remainder [read $sock [expr $responselen - 8] ]} result]} {
+            ::amesterdebug::debug netc "($this) readMsg error; can't rest of packet: $result"
+            return
+        }        
+        set response $response$remainder   
+    }
+
+    ::amesterdebug::debug netcmsg "($this) Final packet ==> "
+    binary scan $response "H*" finalPacket 
+    ::amesterdebug::debug netcmsg $finalPacket
+
+    ::amesterdebug::debug netcmsg "<< ($this) readMsg"
+    return $response
+}
+
+# Print a NETC message
+proc printNetcMessage { packet } {
+    binary scan $packet "H*" all
+    binary scan $packet "H6H2IH8H4H2cH8H4H4a*" nceye ncvers nclen nccaller ncfunc ncflags ncpad ncseq ncop ncstatus ncdata
+    ::amesterdebug::debug netc "Eyecatcher: 0x$nceye"
+    ::amesterdebug::debug netc "   Version: 0x$ncvers"
+    ::amesterdebug::debug netc "    Length: 0x$nclen"
+    ::amesterdebug::debug netc "    Caller: 0x$nccaller"
+    ::amesterdebug::debug netc "      Func: 0x$ncfunc"
+    ::amesterdebug::debug netc "     Flags: 0x$ncflags"
+    ::amesterdebug::debug netc "       Pad: $ncpad"
+    ::amesterdebug::debug netc "       Seq: 0x$ncseq"
+    ::amesterdebug::debug netc " Operation: 0x$ncop"
+    ::amesterdebug::debug netc "    Status: 0x$ncstatus"
+    ::amesterdebug::debug netc "       All: $all"
+}
+
+# Process an IPMI response
+body netc::processIpmi { ncdata } {
+    set stop_time_ms [clock clicks -milliseconds]
+    set callback ""
+
+    #::amesterdebug::debug netc ">> ($this) processIpmi"
+    #print_queue
+    #print_inprogress
+
+    # Read the inprogress data and clear it for next message
+
+    set tag [lindex $inprogress_q 0]; #whatever it was when enqueued
+    #record message latency
+    if {![info exists inprogress($tag,tag)]} {
+	::amesterdebug::debug 1 "$this processIpmi received $tag, but no message was sent."
+	return
+    }
+    set start_time_ms $inprogress($tag,start_time_ms)
+    set callback $inprogress($tag,callback)
+    after cancel $inprogress($tag,after)
+    array unset inprogress "$tag,*"
+    set inprogress_q [lreplace $inprogress_q 0 0]
+
+    # Now all the inprogress data has been used. Can launch next command
+    # and overlap callback processing with network latency of next command.
+
+    ipmi_dequeue
+
+    # Now that message has gone out, do long latency processing.
+    ${name}_ipmimsglatency add_data [expr $stop_time_ms - $start_time_ms]
+
+    set databytes {}
+    set status {}    
+    binary scan $ncdata "SSccccccca*" reserved len rqaddr netfnlun check1 rsaddr rqseqlun cmd status rest
+
+    ::amesterdebug::debug netcmsg "($this) len=$len status=$status"
+    if {$len > 8} {
+        set datalen [expr $len - 8]
+        binary scan $rest "a${datalen}" databytes
+	${name}_ipmibytesrx add_data $datalen
+    } else {
+	${name}_ipmibytesrx add_data 0
+    }
+
+    if {[::amesterdebug::set ipmi]} {
+	binary scan $databytes "H*" all
+	::amesterdebug::debug ipmi "IPMI received ($this): status=$status data=$all"
+    }
+
+    if {$callback ne {}} {
+        ::amesterdebug::debug netcmsg "($this) netc_process callback=$callback"
+        if {[catch [list eval $callback] result]} {
+            ::amesterdebug::debug 1 "($this) processIpmi error; failed executing callback $callback: $result"
+	    binary scan $databytes "H*" all
+	    ::amesterdebug::debug 1 "  status=$status databytes=$all"
+        }
+    }
+
+    ::amesterdebug::debug netcmsg "<< ($this) processIpmi"
+    #Record time to process the message
+    set now [clock clicks -milliseconds]
+    ${name}_ipmiprocesslatency add_data [expr $now - $stop_time_ms]
+}
+
+# Process traffic from FSP
+body netc::netc_process {} {
+#    ::amesterdebug::debug netc ">> ($this) netc_process"
+    set status ""
+    set ipmi_databytes ""
+    set result ""
+
+    set packet [readMsg $netc_sock]
+    if { [string length $packet] == 0 } {
+        return 0
+    }
+ 
+    binary scan $packet "H6H2IH8H4H2cH8H4H4a*" nceye ncvers nclen nccaller ncfunc ncflags ncpad ncseq ncop ncstatus ncdata
+    set funcop $ncfunc$ncop
+
+    # Print some data on the packet   
+    binary scan $packet "H*" ncall
+    ::amesterdebug::debug netcmsg "($this) Eyecatcher: 0x$nceye"
+    ::amesterdebug::debug netcmsg "($this)    Version: 0x$ncvers"
+    ::amesterdebug::debug netcmsg "($this)     Length: 0x$nclen"
+    ::amesterdebug::debug netcmsg "($this)     Caller: 0x$nccaller"
+    ::amesterdebug::debug netcmsg "($this)       Func: 0x$ncfunc"
+    ::amesterdebug::debug netcmsg "($this)      Flags: 0x$ncflags"
+    ::amesterdebug::debug netcmsg "($this)        Pad: $ncpad"
+    ::amesterdebug::debug netcmsg "($this)        Seq: 0x$ncseq"
+    ::amesterdebug::debug netcmsg "($this)  Operation: 0x$ncop"
+    ::amesterdebug::debug netcmsg "($this)     Status: 0x$ncstatus"
+    ::amesterdebug::debug netcmsg "($this)        All: 0x$ncall"
+    
+    # Decode common status values
+    switch -- $ncstatus {
+        0000 {
+            ::amesterdebug::debug netcmsg "($this) Status = success"
+        } 
+        0001 {
+            ::amesterdebug::debug netc "($this) Status = invalid operation"
+        } 
+        0003 {
+            ::amesterdebug::debug netc "($this) Status = invalid data"
+        } 
+	0004 {
+	    ::amesterdebug::debug netc "($this) Status = invalid command sequence"
+	}
+        0012 {
+            ::amesterdebug::debug netc "($this) Status = too many connections"
+        } 
+        0025 {
+            ::amesterdebug::debug netc "($this) Status = client ID already connected"
+	    puts "($this) Another $::amesterinit::toolname (client id = Amester${netc_id}) is connected. Retrying with different id"
+	    #Retry on another id
+	    netc_close
+	    netc_open
+        } 
+        0032 {
+            ::amesterdebug::debug netc "($this) Status = incompatible client"
+        } 
+        0036 {
+            ::amesterdebug::debug netc "($this) Status = unsupported tool type"
+        } 
+        0026 {
+            ::amesterdebug::debug netc "($this) Status = invalid password"
+        } 
+        0203 {
+            ::amesterdebug::debug netc "($this) Status = password locked"
+        } 
+        0005 {
+            ::amesterdebug::debug netc "($this) Status = not supported on backup FSP or BPC"
+        } 
+        0309 {
+            ::amesterdebug::debug netc "($this) Status = platform prohibits"
+        } 
+        0006 {
+            ::amesterdebug::debug netc "($this) Status = generic failure"
+        } 
+        default {
+            ::amesterdebug::debug netc "($this) Status = unrecognized"
+        }
+    }
+
+    switch -- $funcop {
+        00070002 {
+
+            if { $ncstatus ne "0000" } {
+                ::amesterdebug::debug netc "($this) Failed get version command, closing connection"
+                netc_close
+                return
+            }
+            
+            ::amesterdebug::debug netc "($this) Got get version response"
+            binary scan $ncdata "H2H2H4H4H2H2Sa*" family enclosure major minor \
+                 reserved1 role mtmLength remainder
+            #binary scan $remainder "H[expr 2*$mtmLength]Sa*" mtm serialLength remainder
+            binary scan $remainder "a${mtmLength}Sa*" mtm serialLength remainder
+	    set mtm [string trim $mtm]
+	    set mtm [string trim $mtm \x00]
+	    set model [string range $mtm 0 3]
+            binary scan $remainder "a${serialLength}a2H4a*" serial brand \
+                reserved2 remainder
+	    set serial [string trim $serial]
+	    set serial [string trim $serial \0x00]
+            binary scan $remainder "H4H2H2H2H2H2H2H8" year month day hour \
+                minutes seconds reserved3 microseconds
+            
+            ::amesterdebug::debug netc "($this) Interface family: 0x$family"
+            ::amesterdebug::debug netc "($this) Enclosure type: 0x$enclosure"
+            ::amesterdebug::debug netc "($this) Major version: 0x$major"
+            ::amesterdebug::debug netc "($this) Minor version: 0x$minor"
+            ::amesterdebug::debug netc "($this) Reserved1: 0x$reserved1"
+            ::amesterdebug::debug netc "($this) Role: 0x$role"
+            ::amesterdebug::debug netc "($this) MTM Length: $mtmLength"
+            ::amesterdebug::debug netc "($this) MTM: $mtm"
+            ::amesterdebug::debug netc "($this) Serial Length: $serialLength"
+            ::amesterdebug::debug netc "($this) Serial: $serial"
+            ::amesterdebug::debug netc "($this) Brand: $brand"
+            ::amesterdebug::debug netc "($this) Reserved2: 0x$reserved2"
+            ::amesterdebug::debug netc "($this) Year: $year"
+            ::amesterdebug::debug netc "($this) Month: $month"
+            ::amesterdebug::debug netc "($this) Day: $day"
+            ::amesterdebug::debug netc "($this) Hour: $hour"
+            ::amesterdebug::debug netc "($this) Minutes: $minutes"
+            ::amesterdebug::debug netc "($this) Seconds: $seconds"
+            ::amesterdebug::debug netc "($this) Reserved3: 0x$reserved3"
+            ::amesterdebug::debug netc "($this) Microseconds: 0x$microseconds"
+
+            if {$netc_status eq "opening"} {
+                sendAuthenticatePlatformPassword $netc_sock $passwd
+            }
+            
+        }
+        00077412 {
+
+            after cancel $netc_open_after
+            
+            # All password failures are bad.  We don't want to try opening
+            # the connection again, otherwise we might lock out the password
+            if { $ncstatus ne "0000" } {
+                ::amesterdebug::debug netc "($this) Failed authentication command, closing connection"
+                after cancel $ipmi_health_after
+                netc_close
+                return
+            }
+            
+            # Got the password response
+            ::amesterdebug::debug netc "($this) Got password response"
+            binary scan $ncdata "c" passwordStatus
+            # ::amesterdebug::debug netc "Password status byte: 0x$passwordStatus"
+            if { [expr $passwordStatus & 0x80] } { ::amesterdebug::debug netc "($this) HMC password requires update" }
+            if { [expr $passwordStatus & 0x40] } { ::amesterdebug::debug netc "($this) ASM general password requires update" }
+            if { [expr $passwordStatus & 0x20] } { ::amesterdebug::debug netc "($this) ASM admin password requires update" }
+        
+            # Session now considered "connected"    
+            set netc_status "connected"
+	    set link "up"
+
+	    #Send first surveillance command
+	    netc_surveillance
+
+	    #in case this is a drop-reconnect, try to immediately process
+	    #queued commands.
+            ipmi_dequeue
+        }
+        000590e1 {
+           if { $ncstatus ne "0000" } {
+                ::amesterdebug::debug netc "($this) Failed sending PEx command, but keeping connection open"
+            }
+            processIpmi $ncdata
+        }
+	001c8116 {
+	    ::amesterdebug::debug netc "received GetNodeConfig"
+	    processGetNodeConfig $ncdata
+	}
+	00050009 {
+	    ::amesterdebug::debug netc "received SetPollingFrequency"
+	    
+	}
+        default {
+            bgerror "UNKNOWN NETC MESSAGE type"
+        }
+    } 
+    # end switch class
+    ipmi_dequeue
+    
+}
+
+# Handle timeouts
+body netc::netc_timeout {} {
+    ::amesterdebug::debug netchealth ">> ($this) timeout"
+    ::amesterdebug::debug netchealth "netc_timeout!"
+    netc_close
+    netc_open
+    ::amesterdebug::debug netchealth "<< ($this) timeout"
+    return
+}
+
+# Handle timeouts (debug)
+body netc::netc_timeout_debug { } {
+    set stop_time_ms [clock clicks -milliseconds]
+    set tag [lindex $inprogress_q 0]; #whatever it was when enqueued
+    set start_time_ms $inprogress($tag,start_time_ms)
+    set timems [expr $stop_time_ms - $start_time_ms]
+    ::amesterdebug::debug netc ">> ($this) netc_timeout_debug: $timems ms"
+    if {[::amesterdebug::set netc]} {print_inprogress}
+    netc_timeout
+    ::amesterdebug::debug netc "<< ($this) netc_timeout_debug"
+    return
+}
+
+# Close the NETC connection
+body netc::netc_close {} {
+    ::amesterdebug::debug netc ">> ($this) netc_close"
+    if {$tool eq "MSGP"} {	    
+	sendSetHMCPollingFrequency 3
+    }
+    set link "down"
+    set code [catch {close $netc_sock}]
+    set ipmi_sess_seq_in 0
+    set ipmi_sess_id 0
+    set netc_status "closed"
+    if {$netc_sock == 0} {return}
+
+    #Delete timers
+    after cancel $netc_open_after
+    foreach timer [array names inprogress *,after] {
+        after cancel $inprogress($timer)
+    }
+    
+    #Delete inprogress queue (since socket is closed, no more
+    #messages can return
+    set inprogress_q {}
+
+    # remove storage for this sock and repost all callback messages
+    foreach index [array names inprogress *,tag] {
+        #Get message that failed
+        set tag $inprogress($index)
+        set priority $inprogress($tag,priority)
+        set callback $inprogress($tag,callback)
+        set to $inprogress($tag,timeout)
+        set rssa $inprogress($tag,rssa)
+        set chan $inprogress($tag,chan)
+        set lun $inprogress($tag,lun)
+        set netfn $inprogress($tag,netfn)
+        set cmd $inprogress($tag,cmd)
+        set data $inprogress($tag,data)
+        #remove message from inprogress array
+        array unset inprogress "$tag,*"
+        #Sending message will also reopen the connection
+        ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority $to 0
+    }
+
+    set netc_sock 0 
+    ::amesterdebug::debug netc "<< ($this) netc_close"
+}
+
+proc netc::getCertificatePrivateKeyPassword {} {
+    # Open the 1-line certificate private key password
+    # file and return the string.
+    if {[catch {
+        set fp [open $pkpfile r]
+        set line [gets $fp]
+        close $fp
+    } err]} {
+        return -code error $err
+    } else {
+        return $line
+    }
+}
+
+
+body netc::print_queue {} {
+    puts "Queue --------------------"
+    set _c 0
+    if {[llength $ipmi_msgq]} {
+	set ipmi_msgq [lsort -integer -index 0 $ipmi_msgq]
+	foreach item $ipmi_msgq {
+	    set priority [lindex $item 0]
+	    set tag [lindex $item 1]
+	    set callback [lindex $item 2]
+	    set to [lindex $item 3]
+	    set rssa [lindex $item 4]
+	    set chan [lindex $item 5]
+	    set lun [lindex $item 6]
+	    set netfn [lindex $item 7]
+	    set cmd [lindex $item 8]
+	    set data [lindex $item 9]
+	    binary scan $data "H*" databytes
+	    puts "#$_c priority=$priority tag=$tag timeout=$to callback=$callback cmd=$cmd data=$databytes"
+	    incr _c
+	}
+	puts "--------------------------"
+    }
+}
+
+body netc::print_inprogress {} {
+    puts "Inprogress --------------------"
+    puts "queue = { $inprogress_q }"
+    foreach index [array names inprogress *,tag] {
+        #Get message that failed
+        set tag $inprogress($index)
+        set priority $inprogress($tag,priority)
+        set callback $inprogress($tag,callback)
+        set to $inprogress($tag,timeout)
+        set rssa $inprogress($tag,rssa)
+        set chan $inprogress($tag,chan)
+        set lun $inprogress($tag,lun)
+        set netfn $inprogress($tag,netfn)
+        set cmd $inprogress($tag,cmd)
+        set data $inprogress($tag,data)
+	binary scan $data "H*" databytes
+	puts "tag=$tag priority=$priority timeout=$to callback=$callback cmd=$cmd data=$databytes"
+    }
+    puts "-------------------------------"
+}
+
+# Open the NETC connection
+body netc::netc_open {} {
+    ::amesterdebug::debug netc ">> ($this) netc_open"
+    set result {}
+ 
+    # Done if a socket already exists
+    if {$netc_sock != 0 || $netc_status eq "opening"} {
+        return
+    };
+ 
+    # Set SSL ::amesterdebug::debug options
+    if {[::amesterdebug::set netc]} {
+	set tls::debug 2
+    } else {
+	set tls::debug 0
+    }
+
+    # NETC communication uses a self-signed certificate, generated by the
+    # procedure outlined at http://www.akadia.com/services/ssh_test_certificate.html
+    
+    # Initialize the SSL layer
+    tls::init \
+        -certfile $certfile \
+        -keyfile $keyfile \
+        -ssl2 0 \
+        -ssl3 1 \
+	-tls1.2  1 \
+        -require 0 \
+        -request 0 \
+        -command tls::callback \
+        -password netc::getCertificatePrivateKeyPassword
+
+    ::amesterdebug::debug netc "tls::init completed"
+    
+    # Connect to the FSP   
+    if {[catch {set netc_sock [tls::socket $addr $netc_port]} result]} {
+	::amesterdebug::debug netc "($this) netc_open error; failed to open socket: $result"
+        return
+    }
+
+    ::amesterdebug::debug netc "open socket completed"
+    
+    # Perform the SSL handshake
+    if {[catch {tls::handshake $netc_sock} result]} {
+	::amesterdebug::debug netc "($this) netc_open error; failed in SSL handshake: $result"
+        netc_close
+        return
+    }
+
+    ::amesterdebug::debug netc "SSL handshake completed"
+    
+    # Set the channel for binary communication and register the 
+    # read handler
+    fconfigure $netc_sock -buffering none -blocking 0 -translation binary
+    ::amesterdebug::debug netc [fconfigure $netc_sock]
+    fileevent $netc_sock w {}
+    fileevent $netc_sock r [code $this netc_process]
+
+    ::amesterdebug::debug netc "Channel configuration completed"
+
+    # Send first command to negotiate a connection
+    # Always use a new "tool name" since FSP blocks a tool name from
+    # being reused for 1 minute.  This speeds up drop-reconnect.
+    incr netc_id
+    sendGetEnclosureTypeAndInterfaceVersionNumberV3 $netc_sock
+    set netc_status "opening"
+
+    # Start a timer to make sure the open completes in a timely fashion
+    set netc_open_after [after $timeout [code $this netc_timeout]]
+
+    ::amesterdebug::debug netc "<< ($this) netc_open"
+}
+
+# Check state of the connection
+body netc::ipmi_health {} {
+    ::amesterdebug::debug netchealth ">> ($this) ipmi_health $name $netc_status"
+
+    # Cancel any existing timers
+    after cancel $ipmi_health_after
+
+    # Reset the timer, if necessary
+    if {$ipmi_health_period} {
+        set ipmi_health_after [after $ipmi_health_period [code $this ipmi_health]]
+    } else {
+        return
+    }
+
+    switch -- $netc_status {
+        "disconnected" {
+            ::amesterdebug::debug netchealth "($this) Channel is disconnected, opening"
+            netc_open
+        }
+        "opening" {
+            ::amesterdebug::debug netchealth "($this) Channel is opening, please wait"
+        }
+        "connected" {
+            ::amesterdebug::debug netchealth "($this) Channel is connected, dispatching"
+            ipmi_dequeue
+        }
+        "timeout" {
+            ::amesterdebug::debug netchealth "($this) Channel timed out, closing"
+            netc_close
+        }
+        "error" {
+            ::amesterdebug::debug netchealth "($this) Channel error, closing"
+            netc_close
+        }
+        "closed" {
+            ::amesterdebug::debug netchealth "($this) Channel closed, attempting to open"
+            netc_open
+        }
+        default {
+            ::amesterdebug::debug netchealth "($this) Error: undefined status $netc_status for $name"
+        }
+    }
+    ::amesterdebug::debug netchealth "<< ($this) ipmi_health $name $netc_status"
+}
+
+# Send set_polling_frequency of 30 minutes (every 25 minutes) while connected
+body netc::netc_surveillance {} {
+    ::amesterdebug::debug netc ">> ($this) netc_surveillance $name $netc_status"
+
+    # Cancel any existing timers
+    after cancel $netc_surveillance_after
+
+    # Surveillance is not required for tool type "dev"
+    if {$tool eq "dev"} {return}
+
+    switch -- $netc_status {
+        "connected" {
+	    sendSetHMCPollingFrequency
+        }
+	"opening" {
+	    sendSetHMCPollingFrequency
+	}
+        default {
+	    # Do nothing
+	    return
+        }
+    }
+
+    # Reset the timer, if necessary
+    if {$netc_surveillance_period} {
+        set netc_surveillance_after [after $netc_surveillance_period [code $this netc_surveillance]]
+    } else {
+        return
+    }
+
+}
+
+body netc::add_node_gui_menu {host node} {
+    set name ""
+    regsub -all "::" $host "" name
+    .host.c.f.${name}_menu.functions.m add cascade -label "${name}_node${node}" -menu .host.c.f.${name}_menu.functions.m._node${node}
+    menu .host.c.f.${name}_menu.functions.m._node${node}
+}    
+

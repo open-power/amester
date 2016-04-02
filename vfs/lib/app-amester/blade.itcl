@@ -1,0 +1,275 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+#--------------------------------------------------------------------
+#
+# Blade procedures
+#
+#--------------------------------------------------------------------
+
+
+class blade {
+    inherit host
+
+    #Parameters
+    public variable bc ""
+    public variable slot 0
+
+    protected variable vpdversion ""
+    protected variable mtm ""
+    protected variable model ""
+    protected variable serial ""
+    protected variable assetid ""
+
+    protected variable macaddr1 ""
+    protected variable macaddr2 ""
+    protected variable macaddr3 ""
+    protected variable macaddr4 ""
+
+    # List of colors for graphing
+    #common colorlist {green orange red blue yellow purple}
+    #common colorlist {maroon red orange yellow green blue navy purple brown}
+    #common colorindex 0
+
+    #IPMI
+    public variable ipmi_cache_enable 1
+    common ipmi_cache
+
+    # Pick a color for graphing
+    #public variable color "none"
+
+    constructor {args} {
+	::amesterdebug::debug blade "blade constructor for $this"
+	regsub -all "::" $this "" name
+	eval configure $args
+	if {$bc ne "" && $slot == 0} {
+	    return -code error "Missing a required parameter, -slot <slot>"
+	}
+
+	if {$::options(gui)} {make_gui}
+
+	# Get basic blade info (Number of processors, VPD, etc.)
+	init
+
+        # Assign next color
+        #set color [lindex $colorlist $colorindex]
+        #set colorindex [expr {($colorindex + 1) % [llength $colorlist]}]
+
+	if {$::options(gui)} {host_window_update a b c}
+    }
+    
+    destructor {
+	::amesterdebug::debug blade "$this destructor"
+	#FIXME: delete GUI associated with blade
+	#FIXME: delete all callbacks (bc holds them...)
+    }
+
+    # Get basic info on blade (initialization)
+    public method init {}
+
+    protected variable on 0
+    protected variable inserted 0
+
+    #Performance metrics for workload graphs
+    protected variable perfmetric_latency 0
+    protected variable perfmetric_throughput 0
+
+
+    #GUI
+    public method make_gui {}
+
+    #Communication
+    public method ipmi_send_sync {addr chan lun netfn cmd data {priority 1}}
+    public method ipmi_send_sync_cache {addr chan lun netfn cmd data {priority 1} {tag ""}}
+    public method ipmi_send {addr chan lun netfn cmd data callback priority}
+    public method ipmi_send_callback {myuid d}
+    public variable ipmi_state
+
+    #VPD
+    public method vpd_sync {start len}
+    protected method blade_type {slot}
+
+    #AME
+    #List of AME Components on host
+    protected variable ameclist {}
+    public method get {what args}
+
+}
+
+# Go to BC to get VPD data.
+# FIXME: should use BMC to get blade data
+body blade::vpd_sync {start len} {
+    return [$bc vpd_sync $slot $start $len]
+}
+
+body blade::init {} {
+    ::amesterdebug::debug blade "init"
+    set start 0
+    set length 32
+    # Get basics: VPD size, version.
+    set result [vpd_sync 0 128]
+    #puts "result length [llength $result]"
+    set status [lindex $result 0]
+    if {$status != 0} {
+	return -code error "Failed to read VPD. status=$status"
+    }
+    set bytes [lindex $result 1]
+    binary scan $bytes "H2H*" formatid all
+    binary scan $bytes "H2SH4S" formatid vpdlenblock0 vpdformat vpdlenfixedblock
+
+    #Fetch all bytes in block 0
+
+    # vpd_sync use dot cmd 4.3.5.5 which only caches vpd 00h-CDh
+    set result [vpd_sync 0 206]
+    set status [lindex $result 0]
+    if {$status != 0} {
+	#puts "vpd status = $status"
+	#return -code error "Failed to read VPD 2"
+    }
+    set bytes [lindex $result 1]
+    #strip off the format id byte that dot command returns
+    binary scan $bytes "H2H*" formatid all
+    set vpdbytes [binary format "H*" $all]
+
+
+    set vpdvalues {}
+    switch $vpdformat {
+	0000 { set vpdversion "xseries"}
+	0001 { set vpdversion "1.02"}
+	0100 { set vpdversion "1.03"}
+	0101 { set vpdversion "1.04"}
+	0102 { set vpdversion "1.05"}
+	0103 { set vpdversion "1.06"}
+	0104 { set vpdversion "1.07"}
+	0105 { set vpdversion "1.08"}
+	0106 { set vpdversion "1.09"}
+	0107 { set vpdversion "1.0A"}
+	0108 { set vpdversion "1.0B"}
+	0109 { set vpdversion "1.0C"}
+	010A { set vpdversion "1.0D"}
+	010B { set vpdversion "1.0E"}
+	010C { set vpdversion "1.0F"}
+	default {set vpdversion "unknown"}
+    }
+
+    #Read fixed VPD block (should never change)
+    catch {
+	binary scan [string range $vpdbytes 14 20] "a7" mtm
+	set mtm [string trim $mtm]
+	binary scan [string range $vpdbytes 21 27] "a7" serial
+	set serial [string trim $serial]
+	binary scan [string range $vpdbytes 28 59] "a32" assetid
+	set assetid [string trim $assetid]
+	binary scan [string range $vpdbytes 111 116] "H*" macaddr1
+	binary scan [string range $vpdbytes 117 122] "H*" macaddr2
+	binary scan [string range $vpdbytes 123 128] "H*" macaddr3
+	binary scan [string range $vpdbytes 129 134] "H*" macaddr4
+    }
+    
+    set model [string range $mtm 0 3]
+    set ameclist [ame::init_ame_objects $name]
+}
+
+
+body blade::make_gui {} {
+    ::amesterdebug::debug gui "blade_make_host_window $name"
+
+    # Add all sensor labels
+    # These are the stats that are created as labels
+    set host_label_list [list {name} {addr} {ameutilport} {link} {vpdversion} {mtm} {model} {serial} {assetid} {macaddr1} {macaddr2} {macaddr3} {macaddr4} ]
+
+    foreach {key}  $host_label_list  {
+    	if {![info exists ::host_stats_anchor($key)]} {
+    	    set anchor e
+    	} else {
+    	    set anchor $::host_stats_anchor($key)
+    	}
+    	host_window_add $name $key [label .host.c.f.${name}_${key} -textvariable [scope $key] -anchor $anchor -font $::fixedfont] $key
+    }
+
+    host_window_add $name inserted [checkbutton .host.c.f.${name}_inserted -variable [scope inserted] -command [list blade_insert $name]] inserted
+    host_window_add $name on [checkbutton .host.c.f.${name}_on -variable [scope on] -command [list blade_on $name]] on
+    
+}
+
+
+
+
+
+#
+# Blade Communication
+#
+
+# ipmi_send_sync
+#
+# This is a command to send an ipmi cmd to a blade.
+# This command waits for a response, prints it, then returns.
+#
+# ipmi_send_sync
+#
+body blade::ipmi_send_sync {addr chan lun netfn cmd data {priority 1}} {
+    binary scan $data "H*" all
+    ::amesterdebug::debug ipmi "send ipmi $this: addr=$addr chan=$chan lun=$lun netfn=$netfn cmd=$cmd data=$all"
+    set result [$bc ipmi_send_sync $slot $addr $chan $lun $netfn $cmd $data $priority]
+    set status [lindex $result 0]
+    if {$status != 0} {
+	return -code error "error from MM: status=$status"
+    }
+    binary scan [lindex $result 1] "@7c" ipmi_status
+    binary scan [lindex $result 1] "@8H*" ipmi_result_ascii
+    set ipmi_result_bin [binary format "H*" $ipmi_result_ascii]
+    return [list $ipmi_status $ipmi_result_bin]			 
+}
+
+#Caching version of ipmi_send_sync
+body blade::ipmi_send_sync_cache {addr chan lun netfn cmd data {priority 1} {tag ""}} {
+    set index [binary format "a*a*H2H2H2H2H2a*" $mtm $tag $addr $chan $lun $netfn $cmd $data]
+    if {$ipmi_cache_enable && [info exists ipmi_cache($index)]} {
+	#binary scan $data "H*" databytes
+	#puts "cache: found command $cmd $databytes"
+    } else {
+	set ipmi_cache($index) [ipmi_send_sync $addr $chan $lun $netfn $cmd $data $priority]
+    }
+					   
+    return $ipmi_cache($index)
+}
+
+
+body blade::ipmi_send {addr chan lun netfn cmd data callback priority} {
+    set myuid [uid_create]
+    set ipmi_state($myuid,callback) $callback
+    set ipmi_callback "[code $this ipmi_send_callback] $myuid \$databytes"
+    $bc ipmi_send $slot $addr $chan $lun $netfn $cmd $data $ipmi_callback $priority
+}
+
+# NOTE: callback may use variables: status, databytes.
+# On error, status and databytes may be defined, but empty "set status {}"
+# Callback needs to check that status and databytes are not empty lists.
+body blade::ipmi_send_callback {myuid d} {
+    set status {}
+    set ipmi_result_ascii {}
+    set databytes {}
+    binary scan $d "@7c" status
+    binary scan $d "@8H*" ipmi_result_ascii
+    set databytes [binary format "H*" $ipmi_result_ascii]    
+    if {[catch [list eval $ipmi_state($myuid,callback)] result]} {
+	::amesterdebug::debug 1 "$this ERROR while executing callback= $ipmi_state($myuid,callback)\n  result = $result"
+    }
+    array unset ipmi_state "$myuid,*"
+}
+
+body blade::get {what args} {
+    switch $what {
+	ameclist {return $ameclist}
+	amec {return [lindex $ameclist 0]}
+	macaddr1 {return $macaddr1}
+	macaddr2 {return $macaddr2}
+	macaddr3 {return $macaddr3}
+	macaddr4 {return $macaddr4}
+	link { return $link}
+	net_status {return $net_status}
+	default {return -code error "unknown command for amec: $what $args"}
+    }
+    
+}

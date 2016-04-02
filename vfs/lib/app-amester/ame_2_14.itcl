@@ -1,0 +1,1873 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+class ame_2_14 {
+    inherit ame
+
+    public variable name ""
+
+    #GUI
+    protected method make_gui_preinit {}
+    protected method make_gui_postinit {}
+    protected method options_window {}
+    protected common sensor_stats_anchor
+    set sensor_stats_anchor(addr) w
+    set sensor_stats_anchor(port) w
+    set sensor_stats_anchor(status) w
+    set sensor_stats_anchor(link) w
+    set sensor_stats_anchor(name) w
+    set sensor_stats_anchor(sensorname) w
+
+    #Set stats and stats_all the same
+    protected variable sensor_window_stats_all {graph sensorname freq value max min}
+    protected variable sensor_window_stats {graph sensorname freq value max min}
+    protected variable sensor_window_elements
+    protected variable sensor_window_titles
+
+    public method sensor_window_add {sensorobj key element {title none}}
+    public method sensor_window_delete {sensorobj}
+    public method sensor_window_update {}
+
+    # (Blade things that fall under AME API, but should not)
+    # CPU info
+    protected variable numcpu 0
+    protected variable cpulist {}
+    protected variable cpumask {}
+    protected variable frequency 0
+    public method get_frequency_sync {}
+    protected method get_frequency_callback {status databytes}
+    public method get_cpus_sync {}
+    protected method get_cpus_callback {status databytes}
+
+    #list of sensor objects displayed
+    protected variable sensorobjs {}
+    #list of all sensor objects that exist on amec
+    protected variable sensorobjs_all {}
+
+    protected variable numsensors 0
+    protected variable sensor_list {}
+    protected variable sensor_list_all {}
+    protected variable sensor_list_name {}
+    protected variable sensor_list_all_name {}
+    #protected variable stats_list $::default_stats_list
+    #protected variable stats_list_all $::default_stats_list_all
+    protected variable sensor_data_labels {}
+
+    protected variable amec_ver_major 0
+    protected variable amec_ver_minor 0
+    protected variable amec_ver_year 0
+    protected variable amec_ver_month 0
+    protected variable amec_ver_day 0
+
+    protected variable ame_ver_major 0
+    protected variable ame_ver_minor 0
+    protected variable ame_ver_year 0
+    protected variable ame_ver_month 0
+    protected variable ame_ver_day 0
+
+    protected variable version "unknown"
+    protected variable date "unknown"
+
+    protected variable ame_version "unknown"
+    protected variable ame_date "unknown"
+    protected variable api_version "unknown"
+    protected variable api_major "unknown"
+    protected variable api_minor "unknown"
+
+
+    protected method process_version {msg}
+
+    #
+    # Power Management
+    #
+    protected variable requests 0
+    protected variable budget 0
+    protected variable budget_prealloc 0
+    protected variable budget_postalloc 0
+    # The power measurement error is assumed a fixed 2% for now.  In later
+    # AME versions, this should come from the firmware itself.
+    protected variable power_measurement_error 0.02
+    # These functions were created in anticipation of variable measurement
+    # errors, to separate this concern from power management logic.
+    public method add_power_measurement_error {power_measurement}
+    public method get_power_measurement_error {budget}
+
+    #Power budgets GUI
+    protected common update_budget_after 0
+    protected proc update_budget_every_1_second {}
+    protected method new_budget {}
+    protected method cluster_budget_new_data {}
+    protected method cluster_budget_new_blade {}
+    protected method cluster_budget_barchart {}
+
+    # These are the limits within which the blade can control power.
+    # These are raw numbers that must be derated by 2% before sending to the controller.
+    protected variable budget_low 0
+    protected variable budget_high 0
+
+    # Derated so the values can be compared to what power controller uses.
+    protected variable budget_low_derated 0
+    protected variable budget_high_derated 0
+
+    # Numbers returned by existing FPM scheme. 
+    protected variable fpm_budget_low 0
+    protected variable fpm_budget_high 0
+
+    # AME control info
+    protected variable control_enable 0
+    protected variable control_type 0
+    protected variable control_a 0
+    protected variable control_16ms 0
+    protected variable control_160ms 0
+    protected variable control_1s 0
+    protected variable control_frequency 0
+    protected variable control_ptvm16ms 0
+    protected variable control_ptvm160ms 0
+    protected variable control_ptvm1s 0
+    protected variable control_ptv16ms 0
+    protected variable control_ptv160ms 0
+    protected variable control_ptv1s 0
+
+    #Convert integer 100 mW unit to FP 1 W value.  Eg. 342 -> 34.2 W
+    protected method _100mWto1W {power}
+    #Convert FP 1 W unit value to 100 mW integer value. Truncating. Eg. 34.25 W -> 342
+    protected method _1Wto100mW {power}
+    protected method _1Wto100mW_ceil {power}
+
+    protected method gui_reconfig_var {method var}
+    protected method gui_reconfig_var2 {method arg1 var}
+    public method control_window {}
+    public method set_sensor_list {sensors}
+    public method set_sensor_list_num {r_num}
+    protected method sensornames_callback {}
+    public method sensornames {}
+    public method sensorstats {}
+    public method reset {}
+    public method reset_sync {}
+    protected method reset_callback {status databytes}
+    public method calibrate_blade {}
+    public method make_sensor_window {}
+    protected method update_sensor_window {}
+    public method sensor_window_raise {}
+    protected method sensor_window_withdraw {}
+
+    protected method init {}
+    protected method version_callback {status databytes}
+    protected method api_callback {status databytes}
+    protected method numsensors_callback {status databytes}
+    protected method name_callback {sensornum status databytes}
+    protected method freq_callback {sensorname status databytes}
+    protected method units_callback {sensorname status databytes}
+    protected method scale_callback {sensorname status databytes}
+    protected method power_range_callback {status databytes}
+
+    public method update_control_parameters {}
+    public method get_control_enable {}
+    public method get_control_enable_callback {status databytes}
+    public method set_control_enable {enable}
+    public method set_control_enable_callback {enable status databytes}
+    public method get_control_type {}
+    public method get_control_type_callback {status databytes}
+    public method set_control_type {type}
+    public method set_control_type_callback {type status databytes}
+    public method get_control_a {}
+    public method get_control_a_callback {status databytes}
+    public method set_control_a {a}
+    public method set_control_a_callback {a status databytes}
+    public method get_control_16ms {}
+    public method get_control_16ms_callback {status databytes}
+    public method set_control_16ms {power}
+    public method set_control_16ms_callback {power status databytes}
+    public method get_control_160ms {}
+    public method get_control_160ms_callback {status databytes}
+    public method set_control_160ms {power}
+    public method set_control_160ms_callback {power status databytes}
+    public method get_control_1s {}
+    public method get_control_1s_callback {status databytes}
+    public method set_control_1s {power}
+    public method set_control_1s_callback {power status databytes}
+    public method get_control_ptvm16ms {}
+    public method get_control_ptvm16ms_callback {status databytes}
+    public method set_control_ptvm16ms {power}
+    public method set_control_ptvm16ms_callback {power status databytes}
+    public method get_control_ptvm160ms {}
+    public method get_control_ptvm160ms_callback {status databytes}
+    public method set_control_ptvm160ms {power}
+    public method set_control_ptvm160ms_callback {power status databytes}
+    public method get_control_ptvm1s {}
+    public method get_control_ptvm1s_callback {status databytes}
+    public method set_control_ptvm1s {power}
+    public method set_control_ptvm1s_callback {power status databytes}
+    public method get_control_ptv16ms {}
+    public method get_control_ptv16ms_callback {status databytes}
+    public method set_control_ptv16ms {power}
+    public method set_control_ptv16ms_callback {power status databytes}
+    public method get_control_ptv160ms {}
+    public method get_control_ptv160ms_callback {status databytes}
+    public method set_control_ptv160ms {power}
+    public method set_control_ptv160ms_callback {power status databytes}
+    public method get_control_ptv1s {}
+    public method get_control_ptv1s_callback {status databytes}
+    public method set_control_ptv1s {power}
+    public method set_control_ptv1s_callback {power status databytes}
+    public method get_var_2B {id variable}
+    public method get_var_2B_callback {varname status databytes}
+    public method set_var_2B {varindex value}
+    public method set_var_2B_callback {value status databytes}
+
+
+    #Throttling
+    # variable throttlevalue(cpunum) is the setting of the throttle (0-7 on HS20)
+    protected variable throttlevalue
+    public method set_cpu_throttle { p t}
+    protected method set_cpu_throttle_callback { cpu status databytes}
+    public method get_cpu_throttle_sync { p}
+    public method get_cpu_throttle { p}
+    protected method get_cpu_throttle_callback { cpu status databytes}
+    public method changethrottle { t}
+    public method throttlecontrol { f p}
+    public method throttle {}
+
+    # Histogram information (blade-level parameters only here)
+    protected variable hist_enable 0
+    protected variable histogram_snapshot_interval 0
+
+    public method get_histogram_snapshot_interval {}
+    protected method get_histogram_snapshot_interval_callback {status databytes}
+    public method set_histogram_snapshot_interval {k}
+    protected method set_histogram_snapshot_interval_callback {k status databytes}
+    public method histogram_set_enable {enable}
+    protected method histogram_set_enable_callback {enable status databytes}
+    public method histogram_get_enable {}
+    protected method histogram_get_enable_callback {status databytes}
+    public method histogram_clear {}
+    
+
+    public method get {what args}
+
+    constructor {parent args} {
+	::amesterdebug::debug blade "ame_2_14:: constructor for $this"
+	#init name to object name (can be overridden by arg)
+	regsub -all "::" $this "" name
+	set host $parent
+	eval configure $args
+
+	if {$::options(gui)} {make_gui_preinit}
+	#eval configure $args
+	# Get basic blade info (Number of processors, VPD, etc.)
+	init
+	if {$::options(gui)} {make_gui_postinit}
+	
+	if {$update_budget_after == 0} {update_budget_every_1_second}
+    }
+
+    destructor {
+	after cancel $update_budget_after
+    }
+
+}
+
+body ame_2_14::make_gui_preinit {} {
+    set hostname [$host cget -name]
+
+    .host.c.f.${hostname}_menu.functions.m add cascade -label "$name ..." -menu .host.c.f.${hostname}_menu.functions.m.${name}
+    menu .host.c.f.${hostname}_menu.functions.m.${name}
+
+
+    # Histogram must be added before any sensor is created because
+    # sensor will add items to menu if it supports the histogram
+    # feature.
+    .host.c.f.${hostname}_menu.functions.m.${name} add cascade -label "Histogram..." -menu .host.c.f.${hostname}_menu.functions.m.${name}.hist 
+    menu .host.c.f.${hostname}_menu.functions.m.${name}.hist
+
+    .host.c.f.${hostname}_menu.functions.m.${name} add command -label "Options..." -command [code $this options_window]
+
+    #Make container for sensors, but don't show it yet.
+    #Required so sensor has a place to put labels it owns.
+    make_sensor_window
+}
+
+body ame_2_14::make_gui_postinit {} {
+    set hostname [$host cget -name]
+
+    #Only 1 AME component is responsible for making the GUI elements
+    #that correspond with the host-level.  If another AME tries to make
+    #the same element, then fail silently and return.
+    catch {
+	
+	set host_label_list [list {frequency} {numcpu} {cpulist} {cpumask} {version} {date} {requests} {budget} {budget_prealloc} {budget_postalloc} {budget_low} {budget_high} {control_enable} {control_type} {control_a} {control_16ms} {control_160ms} {control_1s} {hist_enable}]
+	
+	foreach {key}  $host_label_list  {
+	    if {![info exists ::host_stats_anchor($key)]} {
+		set anchor e
+	    } else {
+		set anchor $::host_stats_anchor($key)
+	    }
+	    host_window_add $hostname $key [label .host.c.f.${hostname}_${key} -textvariable [scope $key] -anchor $anchor -font $::fixedfont] $key
+	}
+	
+	host_window_add $hostname ame_version [label .host.c.f.${hostname}_ame_version -textvariable [scope ame_version] -anchor w -font $::fixedfont] {ame version}
+	host_window_add $hostname ame_date [label .host.c.f.${hostname}_ame_date -textvariable [scope ame_date] -anchor w -font $::fixedfont] {ame date}
+	host_window_add $hostname api_version [label .host.c.f.${hostname}_api_version -textvariable [scope api_version] -anchor w -font $::fixedfont] {api version}
+    }
+
+    .host.c.f.${hostname}_menu.functions.m.${name} add command -label "Control..." -command [code $this control_window]
+    .host.c.f.${hostname}_menu.functions.m.${name} add command -label "Sensors..." -command [code $this sensor_window_raise]
+    if {$numcpu > 0} {
+	.host.c.f.${hostname}_menu.functions.m.${name} add command -label "Throttle..." -command [code $this throttle]
+    }
+
+}
+
+
+#
+# Blade options window
+#
+
+#body blade::histogram_snapshot_interval_reconfig {} {
+#    set_histogram_snapshot_interval $histogram_snapshot_interval
+#}
+
+body ame_2_14::options_window {} {
+    set wname .options_${name}
+    if {[winfo exists $wname]} {
+	focus $wname
+	raise $wname
+	return
+    } 
+    
+    toplevel $wname
+    wm title $wname "Options for $name"
+
+    # Set histogram check interval
+    set thecmd [code $this gui_reconfig_var set_histogram_snapshot_interval histogram_snapshot_interval]
+    spinbox $wname.hist_snap -textvariable [scope histogram_snapshot_interval] -width 7 -from 0 -to 1000000 -increment 1000  -justify right -command $thecmd
+    label $wname.hist_snap_l -text "Interval to snapshot histogram data (ms)" -anchor w
+    bind $wname.hist_snap <Return> $thecmd
+    bind $wname.hist_snap <Tab> $thecmd
+    grid $wname.hist_snap $wname.hist_snap_l -sticky news
+
+    checkbutton $wname.hist_enable -text "Enable histograms on BMC" -variable [scope hist_enable] -command [code $this gui_reconfig_var histogram_set_enable hist_enable]  -anchor w
+    grid $wname.hist_enable -sticky news -column 0 -columnspan 2
+    
+    button $wname.hist_clear -text "Clear Histograms" -command [code $this histogram_clear]
+    grid $wname.hist_clear -sticky news -column 0 -columnspan 2
+}
+
+
+body ame_2_14::sensor_window_add {sensorobj key element {title none}} {
+    ::amesterdebug::debug gui "sensor_window_add sensor=$sensorobj key=$key element=$element title=$title"
+    set sensor_window_elements($sensorobj,$key) $element
+    if {[lsearch -exact $sensor_window_stats_all $key] == -1} {
+	lappend sensor_window_stats_all $key
+    }
+    if {$title ne "none"} {
+	if {![info exists sensor_window_titles($key)]} {
+	    if {![info exists sensor_stats_anchor($key)]} {
+		set anchor e
+	    } else {
+		set anchor $sensor_stats_anchor($key)
+	    }
+	    set sensor_window_titles($key) [label .${name}_sensorwin.s.title_${key}  -text $title -anchor $anchor -font $::fixedfont]
+	}
+    }
+}
+
+body ame_2_14::sensor_window_delete {sensorobj} {
+    ::amesterdebug::debug gui "sensor_window_delete $sensorobj"
+    #remove from display
+    foreach item [array names sensor_window_elements $sensorobj,*] {
+	grid remove $item
+    }
+    #forget element
+    array unset sensor_window_elements "$sensorobj,*"
+}
+
+body ame_2_14::sensor_window_update {} {
+    ::amesterdebug::debug gui "sensor_window_update"
+    if {!$::options(gui)} {return}
+
+    set f .${name}_sensorwin
+    if {![winfo exists $f]} {
+	return
+    }
+
+    #wm resizable $f 1 1
+
+
+    #variables for specifying the grid
+    set row 0
+    set col 0
+
+    # unpack things in .host
+    foreach t [grid slaves .${name}_sensorwin.s] {
+	grid remove $t
+    }
+
+    # Pack column titles
+    set row 0
+    set col 0
+
+    foreach t $sensor_window_stats  {
+	if {[info exists sensor_window_titles($t)]} {
+	    if {[winfo exists $sensor_window_titles($t)]} {
+		grid $sensor_window_titles($t) -row $row -column $col -ipadx 10 -sticky news
+	    }
+	}
+	incr col
+    }
+    incr row
+    grid .${name}_sensorwin.s.sep -row $row -column 0 -columnspan [llength $sensor_window_stats] -sticky news
+    
+    # Add all sockets (hosts) being watched
+    incr row
+    ::amesterdebug::debug gui "  sensorobjs is $sensorobjs"
+    foreach {s} $sensorobjs {
+	set col 0
+	foreach {t}  $sensor_window_stats  {
+	    if {[info exists sensor_window_elements($s,$t)]} {
+		if {[winfo exists $sensor_window_elements($s,$t)]} {
+		    grid $sensor_window_elements($s,$t) -row $row -column $col -ipadx 10 -sticky news
+		}
+	    }
+	    incr col
+        }
+	incr row
+    }
+
+    #Make grid stretchable
+    set size [grid size .${name}_sensorwin.s]
+    set rm [lindex $size 1]
+    set cm [lindex $size 0]
+    for {set row 0} {$row < $rm} {incr row} {
+	grid rowconfigure .${name}_sensorwin.s $row -weight 1
+    }
+    for {set col 0} {$col < $cm} {incr col} {
+	grid columnconfigure .${name}_sensorwin.s $col -weight 1
+    }
+
+    #wm resizable $f 1 0
+
+}
+
+
+
+#
+# Helper function to call a method with the new variable value set by the GUI
+#
+# This gives us the updated var after the user has modified the GUI. 
+#
+body ame_2_14::gui_reconfig_var {method var} {
+    $method [set $var]
+}
+body ame_2_14::gui_reconfig_var2 {method arg1 var} {
+    $method $arg1 [set $var]
+}
+
+#--------------------------------------------------------------------
+#
+# Sensor GUI
+#
+#--------------------------------------------------------------------
+
+#
+# Converts a list of sensor names to numbers and
+# then calls set_sensor_list_num with them
+#
+body ame_2_14::set_sensor_list {sensors} {
+    ::amesterdebug::debug gui "set_sensor_list $name $sensors"
+    # Convert list of sensor names to list of sensor numbers
+    set r_num {}
+    foreach sensorname $sensors {
+	set sensorobj [find object ${this}_${sensorname}] 
+	if {$sensorobj ne ""} {
+	    set n [$sensorobj cget -sensornum]
+	    if {[lsearch -exact $r_num $n] == -1} {
+		lappend r_num $n
+	    }
+	} else {
+	    ::amesterdebug::debug gui "set_sensor_list: sensor $sensorname does not exist"
+	    puts stderr "ERROR set_sensor_list: sensor $sensorname does not exist"
+	    return
+	}
+    }
+
+    set_sensor_list_num $r_num
+}
+
+body ame_2_14::set_sensor_list_num {r_num} {
+    ::amesterdebug::debug gui "set_sensor_list_num $name $r_num"
+
+    # Find sensors to add to GUI
+    set add {}
+    foreach sensornum $r_num {
+    	set i [lsearch -exact $sensor_list $sensornum]
+    	if {$i == -1} {
+    	    lappend add $sensornum
+    	}
+    }
+    
+    ::amesterdebug::debug gui "set_sensor_list_num: adding $add"
+    #::amesterdebug::debug gui "set_sensor_list_num: deleting $del"
+    ::amesterdebug::debug gui "set_sensor_list_num: set ::blade($name,sensor_list) = $r_num"
+
+    # Re-order sensor list. Assumes del/add completed ok.
+    set sensor_list $r_num
+    set sensor_list_name {}
+    set sensorobjs {}
+    # Add to name list of active sensors
+    foreach sensornum $r_num {
+	set sensorobj $::sensornum2obj($name,$sensornum)
+	lappend sensorobjs $sensorobj
+	lappend sensor_list_name [$sensorobj cget -sensorname]
+    }
+    # Collect data for new sensors
+    foreach sensornum $add {
+	set sensorobj $::sensornum2obj($name,$sensornum)
+	$sensorobj sensor_data
+    }
+    # Update GUI to reflect added or deleted sensors
+    sensor_window_update
+}
+
+body ame_2_14::sensornames_callback {} {
+    set_sensor_list $sensor_list_name
+}
+
+body ame_2_14::sensornames {} {
+    multiselect \#auto [scope sensor_list_all_name] [scope sensor_list_name] [code $this sensornames_callback]
+}
+
+body ame_2_14::sensorstats {} {
+    multiselect \#auto [scope sensor_window_stats_all] [scope sensor_window_stats] [code $this sensor_window_update]
+}
+
+body ame_2_14::reset_sync {} {
+	::amesterdebug::debug 0 "reset_sync $name"
+	if {[$host cget -bc] ne ""} {
+		foreach sensornum $sensor_list_all {
+			::amesterdebug::debug bc "sending synchronous reset for sensor $sensornum for $name"
+		    set result [send_sync 3a 3c [binary format "cc" 4 $sensornum]]
+		}
+	} else {
+		# I don't know how to make this synchronous, or if it's even used anymore
+		#  --Tyler Bletsch
+		net_send_msg {resetglobal} {} {::amesterdebug::debug network "resetglobal $name"}
+	}
+}
+
+body ame_2_14::reset {} {
+    ::amesterdebug::debug 0 "reset $name"
+    if {[$host cget -bc] ne ""} {
+	#reset
+	foreach sensornum $sensor_list_all {
+	    ::amesterdebug::debug bc "sending reset for sensor $sensornum for $name"
+	    send 3a 3c [binary format "cc" 4 $sensornum]  "[code $this reset_callback] \$status \$databytes" $::priority_cmd
+	}
+    } else {
+	net_send_msg {resetglobal} {} {::amesterdebug::debug network "resetglobal $name"}
+    }
+}
+
+#stub
+body ame_2_14::reset_callback {status databytes} {
+}
+
+body ame_2_14::calibrate_blade {} {
+    ::amesterdebug::debug blade "calibrate_blade $name"
+    if {[$host cget -bc] ne ""} {
+	::amesterdebug::debug bc "found blade $name"
+	#Calibrate on any sensor will calibrate the entire blade
+	#so we calibrate only sensor #0
+	send 3a 3c [binary format "H*" 0900] {} $::priority_cmd
+    } else {
+	net_send_msg {calibrate_all} {} {::amesterdebug::debug network "calibrate_all $name"}
+    }
+}
+
+#
+# "Blade window" showing sensors for an AME component
+# Based on host window 
+#
+
+body ame_2_14::sensor_window_raise {} {
+    # window
+    ::amesterdebug::debug gui "sensor_window_raise"
+    set f .${name}_sensorwin
+    if {[winfo exists $f]} {
+	::amesterdebug::debug gui "$f exists, so raise it."
+	wm deiconify $f
+	#wm state .${name}_sensorwin normal
+	focus $f
+	raise $f
+    } else {
+	::amesterdebug::debug gui "$f doesn't exist, so make it, then raise it."
+	make_sensor_window
+	focus $f
+	raise $f
+    }
+}
+
+body ame_2_14::sensor_window_withdraw {} {
+    ::amesterdebug::debug gui "sensor_window_withdraw"
+    set f .${name}_sensorwin
+    if {[winfo exists $f]} {
+	wm withdraw $f
+    }
+}
+
+# A window that displays sensors for 1 host
+body ame_2_14::make_sensor_window {} {
+    ::amesterdebug::debug gui "make_sensor_window $name"
+    global valuelabelwidth
+
+    # window
+    set f .${name}_sensorwin
+
+    if {[winfo exists $f]} {
+	focus $f
+	raise $f
+    } else {
+	toplevel $f
+	wm withdraw $f
+	wm protocol $f WM_DELETE_WINDOW [code $this sensor_window_withdraw]
+
+	#
+	# Button bar
+	#
+	frame $f.bbar -relief raised -bd 2
+	button $f.bbar.reset -text "Reset" -command [code $this reset]
+	button $f.bbar.selsens -text "Select sensors" -command [code $this sensornames]
+	#select_sensors
+	button $f.bbar.selcols -text "Select columns" -command [code $this sensorstats]
+
+	#button $f.bbar.calibrate -text "Calibrate" -command calibrate_all
+	pack $f.bbar.reset $f.bbar.selsens $f.bbar.selcols -side left
+	
+	# frame for sensor data
+	frame $f.s
+
+	# make all possible column titles
+#	foreach {t} $stats_list_all {
+#	    if {![info exists ::sensor_stats_anchor($t)]} {
+#		set anchor e
+#	    } else {
+#		set anchor $::sensor_stats_anchor($t)
+#	    }
+#	    label $f.s.title_${t}  -text $t -anchor $anchor -font $::fixedfont
+#	}
+
+	# separator line
+	frame $f.s.sep -bg black -height 2
+
+	#make all possible sensor data labels
+#	foreach sensorname $sensor_list_all_name {
+#	    foreach {t}  $stats_list_all  {
+#		if {![info exists ::sensor_stats_anchor($t)]} {
+#		    set anchor e
+#		} else {
+#		    set anchor $::sensor_stats_anchor($t)
+#		}
+#		set sensornum [${this}:${sensorname} cget -sensornum]
+#		label $f.s.${sensornum}_${t} -textvariable g_s($name,$sensorname,$t) -anchor $anchor -font $::fixedfont
+#	    }
+#	    button $f.s.${sensornum}_graph -text Graph -command [code $this make_graph $sensorname]
+#	}
+	
+	#make all possible row buttons
+
+	wm title $f "$name"
+
+	pack $f.bbar -side top -fill x
+	pack $f.s
+
+
+    }
+}
+
+
+# Called by bc_create to start monitoring for a blade
+# This can be called multiple times for a blade without ill-effect.
+#
+#
+body ame_2_14::init {} {
+    ::amesterdebug::debug bc "bc_blade_info $this"
+
+    #Get Number of CPUs
+    get_cpus_sync
+
+    #Get Frequency
+    get_frequency_sync
+
+    #Get version
+    ::amesterdebug::debug bc "bc_blade_info get version"
+    set result [send_sync 3a 3c [binary format "c" 1]]
+    set status [lindex $result 0]
+    set data [lindex $result 1]
+    version_callback [lindex $result 0] [lindex $result 1]
+
+    #Get API version
+    ::amesterdebug::debug bc "bc_blade_info get api version"
+    set result [send_sync 3a 3c [binary format "H2" 0a]]
+    api_callback [lindex $result 0] [lindex $result 1]
+
+    #NOTE: This must be the last function in this procedure.
+    # We use the number of sensors to figure out if we are done discovering the blade
+    #
+    #
+    #Get Number of Sensors
+    ::amesterdebug::debug bc "bc_blade_info get num sensors"
+    set result [send_sync 3a 3c [binary format "H2" 02]]
+    numsensors_callback [lindex $result 0] [lindex $result 1]
+
+    #Get Min/Max Watts
+    ::amesterdebug::debug bc "bc_blade_info get min/max watts"
+    set result [send_sync 3a 3c [binary format "H*" 0c0000]]
+    power_range_callback [lindex $result 0] [lindex $result 1]
+
+    #update blade control parameters
+    update_control_parameters
+
+    #Get histogram snapshot interval (v2.29)
+    get_histogram_snapshot_interval
+
+    #Get histogram enable
+    histogram_get_enable
+}
+
+body ame_2_14::version_callback {status databytes} {
+    ::amesterdebug::debug bc "bc_blade_version_callback $this"
+    set n [binary scan $databytes "ccScc" ame_ver_major ame_ver_minor ame_ver_year ame_ver_month ame_ver_day]
+
+    set ame_version "${ame_ver_major}.${ame_ver_minor}"
+    set ame_date [format "%4u-%02u-%02u" $ame_ver_year $ame_ver_month $ame_ver_day]
+}
+
+body ame_2_14::api_callback {status databytes} {
+    ::amesterdebug::debug bc "bc_blade_api_callback $this"
+    set n [binary scan $databytes "cc" api_major api_minor]
+    set api_version "${api_major}.${api_minor}"
+}
+
+
+#
+# Read blade sensor configuration
+#
+
+body ame_2_14::numsensors_callback {status databytes} {
+    ::amesterdebug::debug bc "bc_blade_numsensors_callback $this"
+    binary scan $databytes "c" n
+    set n [expr $n & 0xff]
+    ::amesterdebug::debug bc "blade $name has $n sensors"
+    set numsensors $n
+
+    # NOTE: auto-calibration in AME 2.29. No manual calibration required.
+    # If we found any sensors, try to calibrate the blade
+    #if {$n > 0} {calibrate_blade $name}
+
+    for {set i 0} {$i < $n} {incr i} {
+
+	#Get sensor name
+	set result [send_sync 3a 3c [binary format "ccc" 3 $i 0]]
+	name_callback $i [lindex $result 0] [lindex $result 1]
+    }
+
+}
+
+# Parse sensor name
+body ame_2_14::name_callback {sensornum status databytes} {
+    ::amesterdebug::debug bc "bc_blade_name_callback $name $sensornum"
+    set n [binary scan $databytes "A*" sensorname]
+    # We use sensorname in window names
+    # Tk doen't like "." in window names, so we replace "." with "_"
+    # 
+    #
+    #regsub -all "\\." $sensorname "_" sensorname
+
+    if {[catch {set s [sensor_2_14 ::${name}_${sensorname} $this]} result]} {
+	bgerror "can't make $sensornum for $this: $result"
+	return
+    }
+    lappend sensorobjs_all $s
+    
+    #set ::g_s($name,$sensorname,name) $sensorname
+    ::amesterdebug::debug bc ":: Found sensor $sensorname for $name"
+    # Add sensors to list
+    if {[lsearch -exact $sensor_list_all $sensornum] == -1} {
+	lappend sensor_list_all $sensornum
+    }
+    if {[lsearch -exact $sensor_list_all_name $sensorname] == -1} {
+	lappend sensor_list_all_name $sensorname
+    }
+    #By default: no sensors are monitored
+    set ::sensornum2name($name,$sensornum) $sensorname
+    set ::sensornum2obj($name,$sensornum) $s
+    $s configure -sensorname $sensorname -sensornum $sensornum -hist 100 -avg 0
+
+    # IMPORTANT: Put additional data collection below HERE.
+    #
+    #
+
+    #Get sensor freq
+    #set callback "[code $this freq_callback] $sensorname \$status \$databytes"
+    set result [send_sync 3a 3c [binary format "ccc" 3 $sensornum 1]]
+    freq_callback $s [lindex $result 0] [lindex $result 1]
+
+    #Get sensor units
+    #set callback "[code $this units_callback] $sensorname \$status \$databytes"
+    set result [send_sync 3a 3c [binary format "ccc" 3 $sensornum 2]]
+    units_callback $s [lindex $result 0] [lindex $result 1]
+
+    #Get sensor scale
+    #set callback "[code $this scale_callback] $sensorname \$status \$databytes"
+    set result [send_sync 3a 3c [binary format "ccc" 3 $sensornum 3]]
+    scale_callback $s [lindex $result 0] [lindex $result 1]
+    
+    #Get histogram configuration
+    $s histogram_get_config_sync
+    $s histogram_get_mode_sync
+}
+
+# Parse sensor name
+body ame_2_14::freq_callback {sensorobj status databytes} {
+    ::amesterdebug::debug bc "bc_blade_freq_callback"
+    set n [binary scan $databytes "cccc" m1 m2 m3 e]
+    set m1 [expr $m1 & 0xff]
+    set m2 [expr $m2 & 0xff]
+    set m3 [expr $m3 & 0xff]
+    set mant [expr ($m1 << 16) | ($m2 << 8) | $m3]
+    set f [expr $mant * pow(10,$e)]
+    $sensorobj configure -freq $f
+    #set ::g_s($name,[$sensorobj cget -sensorname],freq) "$f Hz"
+    set period [expr int(1.0 / ($f) * 1000)]
+    if {$period > 1000} {
+	$sensorobj configure -update_period $period
+    }
+
+}
+
+# Parse sensor name
+body ame_2_14::units_callback {sensorobj status databytes} {
+    ::amesterdebug::debug bc "bc_blade_freq_units"
+    set n [binary scan $databytes "A*" units]
+    $sensorobj configure -u_value $units
+    #set ::g_s($name,[$sensorobj cget -sensorname],units) $units
+}
+
+body ame_2_14::scale_callback {sensorobj status databytes} {
+    ::amesterdebug::debug bc "bc_blade_scale_callback"
+    set n [binary scan $databytes "cccc" m1 m2 m3 e]
+    set m1 [expr $m1 & 0x0ff]
+    set m2 [expr $m2 & 0x0ff]
+    set m3 [expr $m3 & 0x0ff]
+    set mant [expr ($m1 << 16) | ($m2 << 8) | $m3]
+    set f [expr $mant * pow(10,$e)]
+    $sensorobj configure -scalefactor $f
+    #set ::g_s($name,[$sensorobj cget -sensorname],scalefactor) $f
+}
+
+
+
+body ame_2_14::power_range_callback {status databytes} {
+    set n [binary scan $databytes "@7SS" high low]
+    if {$n != 2} {
+	return
+	#return -code error "cannot get power range for $name"
+    }
+    set fpm_budget_low $low
+    set fpm_budget_high $high
+    
+    set budget_low $fpm_budget_low
+    set budget_high $fpm_budget_high
+    
+    set budget_initial $low
+}
+
+
+
+
+body ame_2_14::update_control_parameters {} {
+    #Get control loop enable
+    get_control_enable
+
+    #Get control loop type
+    get_control_type
+
+    #Get control loop k
+    get_control_a
+
+    #Get control loop set point at 16ms
+    get_control_16ms
+    #Get control loop set point at 160ms
+    get_control_160ms
+    #Get control loop set point at 1s
+    get_control_1s
+
+    get_control_ptvm16ms
+    get_control_ptvm160ms
+    get_control_ptvm1s
+    get_control_ptv16ms
+    get_control_ptv160ms
+    get_control_ptv1s
+
+    #get_var_2B 10 control_ptvm16ms
+    #get_var_2B 11 control_ptvm160ms
+    #get_var_2B 12 control_ptvm1s
+    #get_var_2B 13 control_ptv16ms
+    #get_var_2B 14 control_ptv160ms
+    #get_var_2B 15 control_ptv1s
+}
+
+
+#
+# Get/Set control_enable
+#
+
+body ame_2_14::get_control_enable {} {
+    set callback "[code $this get_control_enable_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" 0800] $callback $::priority_cmd
+}
+
+body ame_2_14::get_control_enable_callback {status databytes} {
+    ::amesterdebug::debug power "bc_blade_get_control_enable_callback $this"
+    set n [binary scan $databytes "c" control_enable ]
+}
+
+body ame_2_14::set_control_enable {enable} {
+    ::amesterdebug::debug power "set_control_enable $this"
+    set callback "[code $this set_control_enable_callback] $enable \$status \$databytes"
+    send 3a 3b [binary format "ccc" 7 0 $enable] $callback $::priority_cmd
+}
+
+body ame_2_14::set_control_enable_callback {enable status databytes} {
+    ::amesterdebug::debug power "set_control_enable_callback $this"
+    if {$status == 0} {
+	set control_enable $enable
+    }
+}
+
+#
+# Get/Set control_type
+#
+
+body ame_2_14::get_control_type {} {
+    set callback "[code $this get_control_type_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" 0801] $callback $::priority_cmd
+}
+
+body ame_2_14::get_control_type_callback {status databytes} {
+    set n [binary scan $databytes "c" control_type]
+}
+
+body ame_2_14::set_control_type {type} {
+    set callback "[code $this set_control_type_callback] $type \$status \$databytes"
+    send 3a 3b [binary format "ccc" 7 1 $type] $callback $::priority_cmd
+}
+
+body ame_2_14::set_control_type_callback {type status databytes} {
+    if {$status == 0} {
+	set control_type $type
+    }
+}
+
+#
+# Get/Set control_a
+#
+
+body ame_2_14::get_control_a {} {
+    set callback "[code $this get_control_a_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" "0802"] $callback $::priority_cmd
+}
+
+body ame_2_14::get_control_a_callback {status databytes} {
+    set n [binary scan $databytes "S" v]
+    set control_a [expr $v & 0xffff]
+}
+
+body ame_2_14::set_control_a {a} {
+    set callback "[code $this set_control_a_callback] $a \$status \$databytes"
+    send 3a 3b [binary format "ccS" 7 2 $a] $callback $::priority_cmd
+}
+
+body ame_2_14::set_control_a_callback {a status databytes} {
+    if {$status == 0} {
+	set control_a $a
+    }
+}
+
+#
+# Helper for power
+#
+
+body ame_2_14::_100mWto1W {power} {
+    expr {$power/10.0}
+}
+
+body ame_2_14::_1Wto100mW {power} {
+    expr {int($power * 10)}
+}
+
+body ame_2_14::_1Wto100mW_ceil {power} {
+    expr {int(ceil($power * 10))}
+}
+
+#
+# Get/Set control_16ms
+#
+
+body ame_2_14::get_control_16ms {} {
+    set callback "[code $this get_control_16ms_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" "0803"] $callback $::priority_cmd
+}
+
+body ame_2_14::get_control_16ms_callback {status databytes} {
+    set n [binary scan $databytes "S" v]
+    set control_16ms [_100mWto1W [expr $v & 0xffff]]
+}
+
+body ame_2_14::set_control_16ms {power} {
+    set callback "[code $this set_control_16ms_callback] $power \$status \$databytes"
+    send 3a 3b [binary format "ccS" 7 3 [_1Wto100mW $power]] $callback $::priority_cmd
+}
+
+body ame_2_14::set_control_16ms_callback {power status databytes} {
+    if {$status == 0} {
+	set control_16ms $power
+    }
+}
+
+#
+# Get/Set control_160ms
+#
+
+body ame_2_14::get_control_160ms {} {
+    set callback "[code $this get_control_160ms_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" "0804"] $callback $::priority_cmd
+}
+
+body ame_2_14::get_control_160ms_callback {status databytes} {
+    set n [binary scan $databytes "S" v]
+    set control_160ms [_100mWto1W [expr $v & 0xffff]]
+}
+
+body ame_2_14::set_control_160ms {power} {
+    set callback "[code $this set_control_160ms_callback ] $power \$status \$databytes"
+    send 3a 3b [binary format "ccS" 7 4 [_1Wto100mW $power]] $callback $::priority_cmd
+}
+
+body ame_2_14::set_control_160ms_callback {power status databytes} {
+    if {$status == 0} {
+	set control_160ms $power
+    }
+}
+
+#
+# Get/Set control_1s
+#
+
+body ame_2_14::get_control_1s {} {
+    set callback "[code $this get_control_1s_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" "0805"] $callback $::priority_cmd
+}
+
+body ame_2_14::get_control_1s_callback {status databytes} {
+    ::amesterdebug::debug power "bc_blade_get_control_1s_callback $this"
+    set n [binary scan $databytes "S" v]
+    set control_1s [_100mWto1W [expr $v & 0xffff]]
+}
+
+body ame_2_14::set_control_1s {power} {
+    ::amesterdebug::debug bc "set_control_1s $this $power"
+    set callback "[code $this set_control_1s_callback ] $power \$status \$databytes"
+    send 3a 3b [binary format "ccS" 7 5 [_1Wto100mW $power]] $callback $::priority_cmd
+}
+
+body ame_2_14::set_control_1s_callback {power status databytes} {
+    ::amesterdebug::debug bc "set_control_1s_callback $this $power"
+    if {$status == 0} {
+	set control_1s $power
+    }
+}
+
+#
+# Get/Set control_ptvm16ms
+#
+
+body ame_2_14::get_control_ptvm16ms {} {
+    set callback "[code $this get_control_ptvm16ms_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" "080a"] $callback $::priority_cmd
+}
+
+body ame_2_14::get_control_ptvm16ms_callback {status databytes} {
+    set n [binary scan $databytes "S" v]
+    set control_ptvm16ms [_100mWto1W [expr $v & 0xffff]]
+}
+
+body ame_2_14::set_control_ptvm16ms {power} {
+    set callback "[code $this set_control_ptvm16ms_callback] $power \$status \$databytes"
+    send 3a 3b [binary format "H*S" "070a" [_1Wto100mW_ceil $power]] $callback $::priority_cmd
+}
+
+body ame_2_14::set_control_ptvm16ms_callback {power status databytes} {
+    if {$status == 0} {
+	set control_ptvm16ms $power
+    }
+}
+
+#
+# Get/Set control_ptvm160ms
+#
+
+body ame_2_14::get_control_ptvm160ms {} {
+    set callback "[code $this get_control_ptvm160ms_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" "080b"] $callback $::priority_cmd
+}
+
+body ame_2_14::get_control_ptvm160ms_callback {status databytes} {
+    set n [binary scan $databytes "S" v]
+    set control_ptvm160ms [_100mWto1W [expr $v & 0xffff]]
+}
+
+body ame_2_14::set_control_ptvm160ms {power} {
+    set callback "[code $this set_control_ptvm160ms_callback ] $power \$status \$databytes"
+    send 3a 3b [binary format "H*S" "070b" [_1Wto100mW_ceil $power]] $callback $::priority_cmd
+}
+
+body ame_2_14::set_control_ptvm160ms_callback {power status databytes} {
+    if {$status == 0} {
+	set control_ptvm160ms $power
+    }
+}
+
+#
+# Get/Set control_ptvm1s
+#
+
+body ame_2_14::get_control_ptvm1s {} {
+    set callback "[code $this get_control_ptvm1s_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" "080c"] $callback $::priority_cmd
+}
+
+body ame_2_14::get_control_ptvm1s_callback {status databytes} {
+    ::amesterdebug::debug power "bc_blade_get_control_ptvm1s_callback $this"
+    set n [binary scan $databytes "S" v]
+    set control_ptvm1s [_100mWto1W [expr $v & 0xffff]]
+}
+
+body ame_2_14::set_control_ptvm1s {power} {
+    ::amesterdebug::debug bc "set_control_ptvm1s $this $power"
+    set callback "[code $this set_control_ptvm1s_callback ] $power \$status \$databytes"
+    send 3a 3b [binary format "H*S" "070c" [_1Wto100mW_ceil $power]] $callback $::priority_cmd
+}
+
+body ame_2_14::set_control_ptvm1s_callback {power status databytes} {
+    ::amesterdebug::debug bc "set_control_ptvm1s_callback $this $power"
+    if {$status == 0} {
+	set control_ptvm1s $power
+    }
+}
+
+#
+# Get/Set control_ptv16ms
+#
+
+body ame_2_14::get_control_ptv16ms {} {
+    set callback "[code $this get_control_ptv16ms_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" "080d"] $callback $::priority_cmd
+}
+
+body ame_2_14::get_control_ptv16ms_callback {status databytes} {
+    set n [binary scan $databytes "S" v]
+    set control_ptv16ms [_100mWto1W [expr $v & 0xffff]]
+}
+
+body ame_2_14::set_control_ptv16ms {power} {
+    set callback "[code $this set_control_ptv16ms_callback] $power \$status \$databytes"
+    send 3a 3b [binary format "H*S" "070d"  [_1Wto100mW $power]] $callback $::priority_cmd
+}
+
+body ame_2_14::set_control_ptv16ms_callback {power status databytes} {
+    if {$status == 0} {
+	set control_ptv16ms $power
+    }
+}
+
+#
+# Get/Set control_ptv160ms
+#
+
+body ame_2_14::get_control_ptv160ms {} {
+    set callback "[code $this get_control_ptv160ms_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" "080e"] $callback $::priority_cmd
+}
+
+body ame_2_14::get_control_ptv160ms_callback {status databytes} {
+    set n [binary scan $databytes "S" v]
+    set control_ptv160ms [_100mWto1W [expr $v & 0xffff]]
+}
+
+body ame_2_14::set_control_ptv160ms {power} {
+    set callback "[code $this set_control_ptv160ms_callback ] $power \$status \$databytes"
+    send 3a 3b [binary format "H*S" "070e" [_1Wto100mW $power]] $callback $::priority_cmd
+}
+
+body ame_2_14::set_control_ptv160ms_callback {power status databytes} {
+    if {$status == 0} {
+	set control_ptv160ms $power
+    }
+}
+
+#
+# Get/Set control_ptv1s
+#
+
+body ame_2_14::get_control_ptv1s {} {
+    set callback "[code $this get_control_ptv1s_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" "080f"] $callback $::priority_cmd
+}
+
+body ame_2_14::get_control_ptv1s_callback {status databytes} {
+    ::amesterdebug::debug power "bc_blade_get_control_ptv1s_callback $this"
+    set n [binary scan $databytes "S" v]
+    set control_ptv1s [_100mWto1W [expr $v & 0xffff]]
+}
+
+body ame_2_14::set_control_ptv1s {power} {
+    ::amesterdebug::debug bc "set_control_ptv1s $this $power"
+    set callback "[code $this set_control_ptv1s_callback ] $power \$status \$databytes"
+    send 3a 3b [binary format "H*S" "070f" [_1Wto100mW $power]] $callback $::priority_cmd
+}
+
+body ame_2_14::set_control_ptv1s_callback {power status databytes} {
+    ::amesterdebug::debug bc "set_control_ptv1s_callback $this $power"
+    if {$status == 0} {
+	set control_ptv1s $power
+    }
+}
+
+
+#
+# Get blade variable 2B
+#
+
+body ame_2_14::get_var_2B {varindex varname} {
+    set callback "[code $this get_var_2B_callback] $varname \$status \$databytes"
+    send 3a 3b [binary format "cc" 8 $varindex] $callback $::priority_cmd
+}
+
+body ame_2_14::get_var_2B_callback {varname status databytes} {
+    #upvar 1 $varname callervar
+    ::amesterdebug::debug bc "get_var_2B_callback $name $varname $status"
+    set n [binary scan $databytes "S" v]
+    ::amesterdebug::debug bc "databytes=$v"
+    set [scope $varname] [expr $v & 0xffff]
+}
+
+body ame_2_14::set_var_2B {varindex value} {
+    set callback "[code $this set_var_2B_callback] $value \$status \$databytes"
+    send 3a 3b [binary format "ccI" 7 $varindex $value] $callback $::priority_cmd
+}
+
+body ame_2_14::set_var_2B_callback {value status databytes} {
+    if {$status != 0} {
+	binary scan $databytes "H*" all
+	::amesterdebug::debug warn "error with set_var_2B_callback value=$value status=$status data=$all"
+    }
+}
+
+#
+# Get/Set histogram_snapshot_interval
+#
+
+body ame_2_14::get_histogram_snapshot_interval {} {
+    ::amesterdebug::debug bc "bc_blade_get_histogram_snapshot_interval $this"
+    set callback "[code $this get_histogram_snapshot_interval_callback] \$status \$databytes"
+    send 3a 3b [binary format "H*" "0808"] $callback $::priority_cmd
+}
+
+body ame_2_14::get_histogram_snapshot_interval_callback {status databytes} {
+    ::amesterdebug::debug bc "bc_blade_get_histogram_snapshot_interval_callback"
+    set n [binary scan $databytes "I" v]
+    set histogram_snapshot_interval [expr $v & 0x0ffffffff]
+}
+
+body ame_2_14::set_histogram_snapshot_interval {k} {
+    set callback "[code $this set_histogram_snapshot_interval_callback] $k \$status \$databytes"
+    send 3a 3b [binary format "H*I" "0708" $k] $callback $::priority_cmd
+}
+
+body ame_2_14::set_histogram_snapshot_interval_callback {k status databytes} {
+    if {$status == 0} {
+	set histogram_snapshot_interval $k
+    }
+}
+
+body ame_2_14::histogram_set_enable {enable} {
+    ::amesterdebug::debug blade "histogram_set_enable $this $enable"
+    set callback "[code $this histogram_set_enable_callback] $enable \$status \$databytes"
+    send 3a 3c [binary format "H2c" "11" $enable] $callback $::priority_cmd
+}
+
+body ame_2_14::histogram_set_enable_callback {enable status databytes} {
+    if {$status == 0} {
+	#OK
+	set hist_enable $enable
+    } else {
+	#Failed
+	::amesterdebug::debug warn "histogram_set_enable_callback failed"
+    }
+}
+
+body ame_2_14::histogram_get_enable {} {
+    set callback "[code $this histogram_get_enable_callback] \$status \$databytes"
+    send 3a 3c [binary format "H*" 12] $callback $::priority_cmd
+}
+
+body ame_2_14::histogram_get_enable_callback {status databytes} {
+    ::amesterdebug::debug histogram "bc_blade_histogram_get_enable_callback $this"
+    #binary scan $databytes "H*" all
+    #::amesterdebug::debug histogram "databytes = $all"
+    set n [binary scan $databytes "c" hist_enable]
+}
+
+body ame_2_14::histogram_clear {} {
+    foreach s $sensorobjs_all {
+	$s histogram_clear
+    }
+}
+
+
+
+#
+# Throttle control
+#
+
+body ame_2_14::set_cpu_throttle { p t} {
+    set callback "[code $this set_cpu_throttle_callback] $p \$status \$databytes"
+    send 3a 3b [binary format "ccc" 2 $p $t] $callback $::priority_cmd
+}
+
+body ame_2_14::set_cpu_throttle_callback { cpu status databytes} {
+    set n [binary scan $databytes "c" throttle]
+    if {$status == 0} {
+	set throttlevalue(${cpu}) $throttle
+    }
+}
+
+body ame_2_14::get_cpu_throttle_sync { p} {
+    set result [send_sync 3a 3b [binary format "H*c" "04" $p]]
+    get_cpu_throttle_callback $p [lindex $result 0] [lindex $result 1]
+}
+
+body ame_2_14::get_cpu_throttle { p} {
+    set callback "[code $this get_cpu_throttle_callback] $p \$status \$databytes"
+    send 3a 3b [binary format "H2c" "04" $p] $callback $::priority_cmd
+}
+
+body ame_2_14::get_cpu_throttle_callback { cpu status databytes} {
+    ::amesterdebug::debug bc "get_cpu_throttle_callback"
+    set n [binary scan $databytes "c" throttle]
+    if {$status == 0} {
+	set throttlevalue(${cpu}) $throttle
+    }
+}
+
+body ame_2_14::changethrottle { t} {
+    for {set cpu 0} {$cpu < $numcpu} {incr cpu} {
+	set_cpu_throttle $cpu $t
+    }
+}
+
+
+#
+#Make a throttle control for processor p in a frame f
+#
+body ame_2_14::throttlecontrol { f p} {
+    frame $f
+    if {![info exists throttlevalue($p)]} {::amesterdebug::debug 1 "throttle value for $name $p is not set "}
+    radiobutton $f.7 -variable [scope throttlevalue($p)] -text "7" -value 7 -command [code $this changethrottle  7] -anchor w 
+    radiobutton $f.6 -variable [scope throttlevalue($p)] -text "6" -value 6 -command [code $this changethrottle 6]  -anchor w
+    radiobutton $f.5 -variable [scope throttlevalue($p)] -text "5" -value 5 -command [code $this changethrottle 5]  -anchor w
+    radiobutton $f.4 -variable [scope throttlevalue($p)] -text "4" -value 4 -command [code $this changethrottle 4]  -anchor w
+    radiobutton $f.3 -variable [scope throttlevalue($p)] -text "3" -value 3 -command [code $this changethrottle 3]  -anchor w
+    radiobutton $f.2 -variable [scope throttlevalue($p)] -text "2" -value 2 -command [code $this changethrottle 2] -anchor w
+    radiobutton $f.1 -variable [scope throttlevalue($p)] -text "1" -value 1 -command [code $this changethrottle 1] -anchor w
+    radiobutton $f.0 -variable [scope throttlevalue($p)] -text "0" -value 0 -command [code $this changethrottle 0] -anchor w
+    pack $f.7 $f.6 $f.5 $f.4 $f.3 $f.2 $f.1 $f.0 -fill x
+
+    return $f
+}
+
+body ame_2_14::throttle {} {
+    set w .throttle_$name
+    if {[winfo exists $w]} {
+	focus $w
+	raise $w
+    } else {
+	set t_list ""
+	set t_label ""
+	toplevel $w
+	wm resizable $w 0 0
+	frame $w.b
+	frame $w.b.lf
+	label $w.b.lf.h -text "High performance" -anchor e
+	label $w.b.lf.l -text "Low performance" -anchor e
+	pack $w.b.lf.h -side top 
+	pack $w.b.lf.l -side bottom 
+	#pack $w.b.lf -side left -expand true -fill both
+	for {set cpu 0} {$cpu <= 0} {incr cpu} {
+	    get_cpu_throttle 0
+	    set t [throttlecontrol $w.b.t_$cpu $cpu]
+	    set t_list "$t_list $t"
+	    set l [label $w.b.l_$cpu -text "CPU"]
+	    set t_label "$t_label $l"
+	    #pack $t -side left
+	}
+	label $w.b.le
+	eval grid $w.b.le $t_label
+	eval grid $w.b.lf $t_list -padx 10
+	grid $w.b.lf -sticky news
+	pack $w.b -side top
+
+	#if {$::blade($bladename,numcpu) > 1} {
+	#    global throttle_indept
+	#    checkbutton $w.c -text "Throttle CPUs independently" -variable throttle_indept
+	#    pack $w.c -side bottom -pady 10
+	#}
+
+    }
+}
+
+body ame_2_14::control_window {} {
+    #update window values
+    update_control_parameters
+    
+    set wname .control_${name}
+    if {[winfo exists $wname]} {
+	focus $wname
+	raise $wname
+	return
+    } 
+
+    # This GUI control uses a temporary variable *_gui to hold the
+    # values of the entry boxes.  When the entries are updated, the
+    # appropriate function is called to update the blade and set the
+    # locally stored blade state.
+
+    #update action
+    set b "$this update_control_parameters"
+    
+    toplevel $wname
+    wm title $wname "Control Loop for $name"
+    wm resizable $wname 0 0
+
+    label $wname.simple -text "Simple interface" -font $::fixedfontbold -anchor w
+
+    checkbutton $wname.c -text "Control loop enable" -variable [scope control_enable] -command [code $this gui_reconfig_var set_control_enable control_enable]  -anchor w -font $::fixedfont 
+
+    set a [code $this gui_reconfig_var set_control_16ms control_16ms]
+    spinbox $wname.sb1 -textvariable [scope control_16ms] -width 7 -from 0 -to 65535 -increment 0.1 -font $::fixedfont -command "$a ; $b"
+    bind $wname.sb1 <Return> "$a ; $b"
+    bind $wname.sb1 <Tab> "$a ; $b"
+
+    set a [code $this gui_reconfig_var set_control_160ms control_160ms]
+    spinbox $wname.sb2 -textvariable [scope control_160ms] -width 7 -from 0 -to 65535 -increment 0.1 -font $::fixedfont -command "$a ; $b"
+    bind $wname.sb2 <Return> "$a ; $b"
+    bind $wname.sb2 <Tab> "$a ; $b"
+    
+    set a [code $this gui_reconfig_var set_control_1s control_1s]
+    spinbox $wname.sb3 -textvariable [scope control_1s] -width 7 -from 0 -to 65535 -increment 0.1 -font $::fixedfont -command "$a ; $b"
+    bind $wname.sb3 <Return> "$a ; $b"
+    bind $wname.sb3 <Tab> "$a ; $b"
+
+    set a [code $this gui_reconfig_var set_control_type control_type]
+    spinbox $wname.sb4 -textvariable [scope control_type] -width 7 -from 0 -to 255 -increment 1 -font $::fixedfont -command $a
+    bind $wname.sb4 <Return> $a
+    bind $wname.sb4 <Tab> $a
+
+    set a [code $this gui_reconfig_var set_control_a control_a] 
+    spinbox $wname.sb5 -textvariable [scope control_a] -width 7 -from 0 -to 65535 -increment 1 -font $::fixedfont -command $a
+    bind $wname.sb5 <Return> $a
+    bind $wname.sb5 <Tab> $a
+    
+    label $wname.l1 -text "one PS budget: " -anchor e -font $::fixedfont 
+    label $wname.l2 -text "two PS budget: " -anchor e -font $::fixedfont 
+    label $wname.l3 -text "PowerExec budget: " -anchor e -font $::fixedfont 
+    label $wname.l4 -text "type: " -anchor e -font $::fixedfont 
+    label $wname.l5 -text "model A parameter: " -anchor e -font $::fixedfont 
+
+    label $wname.mtabove1 -text ""
+    frame $wname.sep1 -bg black -height 2
+    label $wname.advanced -text "Advanced interface" -font $::fixedfontbold -anchor w
+    label $wname.mtbelow1 -text ""
+
+    #Measurement margins
+    label $wname.ptvm -text "Measurement margins" -anchor w -font $::fixedfont 
+    label $wname.lptvm16ms -text "final Watt margin: " -anchor e -font $::fixedfont 
+    label $wname.lptvm160ms -text "% margin of error: " -anchor e -font $::fixedfont 
+    label $wname.lptvm1s -text "% margin max @ 0W: " -anchor e -font $::fixedfont 
+    
+    #set a [code $this gui_reconfig_var2 set_var_2B 10 control_ptvm16ms]
+    set a [code $this gui_reconfig_var set_control_ptvm16ms control_ptvm16ms]
+    spinbox $wname.ptvm16ms -textvariable [scope control_ptvm16ms] -width 7 -from 0 -to 65535 -increment 0.1 -font $::fixedfont -command "$a ; $b"
+    bind $wname.ptvm16ms <Return> "$a ; $b"
+    bind $wname.ptvm16ms <Tab> "$a ; $b"
+    
+    #set a [code $this gui_reconfig_var2 set_var_2B 11 control_ptvm160ms]
+    set a [code $this gui_reconfig_var set_control_ptvm160ms control_ptvm160ms]
+    spinbox $wname.ptvm160ms -textvariable [scope control_ptvm160ms] -width 7 -from 0 -to 65535 -increment 0.1 -font $::fixedfont -command "$a ; $b"
+    bind $wname.ptvm160ms <Return> "$a ; $b"
+    bind $wname.ptvm160ms <Tab> "$a ; $b"
+    
+    #set a [code $this gui_reconfig_var2 set_var_2B 12 control_ptvm1s]
+    set a [code $this gui_reconfig_var set_control_ptvm1s control_ptvm1s]
+    spinbox $wname.ptvm1s -textvariable [scope control_ptvm1s] -width 7 -from 0 -to 65535 -increment 0.1 -font $::fixedfont -command "$a ; $b"
+    bind $wname.ptvm1s <Return> "$a ; $b"
+    bind $wname.ptvm1s <Tab> "$a ; $b"
+    
+    label $wname.mt2 -text ""
+    
+    #Final unmargined budget
+    label $wname.ptv -text "Final unmargined budget" -anchor w -font $::fixedfont 
+    label $wname.lptv16ms -text "Unmargined budget: " -anchor e -font $::fixedfont 
+    label $wname.lptv160ms -text "Override budget: " -anchor e -font $::fixedfont 
+    label $wname.lptv1s -text "Ctl loop budget: " -anchor e -font $::fixedfont 
+    
+#    set a [code $this gui_reconfig_var2 set_var_2B 13 control_ptv16ms]
+    set a [code $this gui_reconfig_var set_control_ptv16ms control_ptv16ms]
+    spinbox $wname.ptv16ms -textvariable [scope control_ptv16ms] -width 7 -from 0 -to 65535 -increment 0.1 -font $::fixedfont -command "$a ; $b"
+    bind $wname.ptv16ms <Return> "$a ; $b"
+    bind $wname.ptv16ms <Tab> "$a ; $b"
+    
+    #set a [code $this gui_reconfig_var2 set_var_2B 14 control_ptv160ms]
+    set a [code $this gui_reconfig_var set_control_ptv160ms control_ptv160ms]
+    spinbox $wname.ptv160ms -textvariable [scope control_ptv160ms] -width 7 -from 0 -to 65535 -increment 0.1 -font $::fixedfont -command "$a ; $b"
+    bind $wname.ptv160ms <Return> "$a ; $b"
+    bind $wname.ptv160ms <Tab> "$a ; $b"
+    
+    #set a [code $this gui_reconfig_var2 set_var_2B 15 control_ptv1s]
+    set a [code $this gui_reconfig_var set_control_ptv1s control_ptv1s]
+    spinbox $wname.ptv1s -textvariable [scope control_ptv1s] -width 7 -from 0 -to 65535 -increment 0.1 -font $::fixedfont -command "$a ; $b"
+    bind $wname.ptv1s <Return> "$a ; $b"
+    bind $wname.ptv1s <Tab> "$a ; $b"
+    
+    grid $wname.simple -columnspan 2 -column 0 -sticky news
+    grid $wname.c -columnspan 2 -column 0 -sticky news
+    grid $wname.l4 $wname.sb4 -sticky news
+    grid $wname.l5 $wname.sb5 -sticky news
+    grid $wname.l1 $wname.sb1 -sticky news
+    grid $wname.l2 $wname.sb2 -sticky news
+    grid $wname.l3 $wname.sb3 -sticky news
+    
+    grid $wname.mtabove1
+    grid $wname.sep1 -columnspan 2 -sticky news
+    grid $wname.advanced -columnspan 2 -sticky news
+    grid $wname.mtbelow1
+
+    grid $wname.ptvm -columnspan 2 -sticky news
+    grid $wname.lptvm16ms $wname.ptvm16ms -sticky news
+    grid $wname.lptvm160ms $wname.ptvm160ms -sticky news
+    grid $wname.lptvm1s $wname.ptvm1s -sticky news
+    
+    grid $wname.mt2
+    
+    grid $wname.ptv -columnspan 2 -sticky news
+    grid $wname.lptv16ms $wname.ptv16ms -sticky news
+    grid $wname.lptv160ms $wname.ptv160ms -sticky news
+    grid $wname.lptv1s $wname.ptv1s -sticky news
+
+}
+
+body ame_2_14::process_version {msg} {
+    ::amesterdebug::debug network "Version: $name $msg"
+    
+    set amec_ver_major [lindex $msg 0]
+    ::amesterdebug::debug network "amec_ver_major = $amec_ver_major"
+    set amec_ver_minor [lindex $msg 1]
+    ::amesterdebug::debug network "amec_ver_major = $amec_ver_minor"
+    set amec_ver_year [lindex $msg 2]
+    set amec_ver_month [lindex $msg 3]
+    set amec_ver_day [lindex $msg 4]
+    
+    set ame_ver_major [lindex $msg 5]
+    set ame_ver_minor [lindex $msg 6]
+    set ame_ver_year [lindex $msg 7]
+    set ame_ver_month [lindex $msg 8]
+    set ame_ver_day [lindex $msg 9]
+
+    #Set variables for display in host window
+    set version "$amec_ver_major.$amec_ver_minor"
+    set date "$amec_ver_year-$amec_ver_month-$amec_ver_day"
+    set ame_version "$ame_ver_major.$ame_ver_minor"
+    set ame_date "$ame_ver_year-$ame_ver_month-$ame_ver_day"
+
+    set api_version "${api_major}.${api_minor}"
+}
+
+
+#
+# Power Management
+#
+
+body ame_2_14::add_power_measurement_error {power_measurement} {
+    return [expr {$power_measurement * (1 + $power_measurement_error)}]
+}
+
+body ame_2_14::get_power_measurement_error {budget} {
+    return [expr {$budget * $power_measurement_error \
+                      / (1 + $power_measurement_error)}]
+}
+
+
+#Budget barchart
+
+body ame_2_14::cluster_budget_new_data {} {
+    #update average bar
+    set value 0
+    foreach b [find objects -isa blade] {
+	#NOTE: data is budget in W
+	set bn $b::name
+	set data $b::budget
+	#set data $::blade($b,budget)
+	.cluster_budget.g.plot element configure $bn -ydata $data
+	.cluster_budget.g.plot marker configure $bn -text $data
+ 	set value [expr $value + $data]
+    }
+    set value [expr double($value) / [llength [find objects -isa blade]]]
+    .cluster_budget.g.plot element configure average -ydata $value
+    .cluster_budget.g.plot marker configure average -text [format "%.1f" $value]
+    .cluster_budget.g.plot element configure unallocated -ydata $::pmcluster(budget_unalloc)
+    .cluster_budget.g.plot marker configure unallocated -text $::pmcluster(budget_unalloc)
+}
+
+body ame_2_14::cluster_budget_new_blade {} {
+    #call whever ::blade_list updates or graph is created. 
+    #fixme: Zeros entire graph when 1 blade is added
+    set i 0
+    foreach b [find objects -isa blade] {
+	set bn $b::name
+
+	#marker sits 12 pixels above x-axis
+	.cluster_budget.g.plot marker create text -name $bn -coords [list $i 0] -font $::markerfont -yoffset -12	
+	.cluster_budget.g.plot element create $bn -ydata 0 -xdata $i -foreground $color
+	incr i
+    }
+    .cluster_budget.g.plot marker create text -name unallocated -coords [list $i 0] -font $::markerfont -yoffset -12
+    .cluster_budget.g.plot element create unallocated -ydata 0 -xdata $i -foreground tan
+    incr i
+    .cluster_budget.g.plot marker create text -name average -coords [list $i 0] -font $::markerfont -yoffset -12
+    .cluster_budget.g.plot element create average -ydata 0 -xdata $i -foreground gray
+
+}
+
+body ame_2_14::cluster_budget_barchart {} {
+    set winname .cluster_budget
+    if {[winfo exists $winname]} {
+	focus $winname
+	raise $winname
+	return
+    }
+
+    #Create window for first time
+    toplevel $winname
+    wm title $winname "Workload budget"
+    frame $winname.g
+    barchart $winname.g.plot -plotbackground white -title "Blade budget" -barwidth 1  -font $::graphtitlefont -plotpadx $::plotpadx -plotpady $::plotpady
+    $winname.g.plot axis configure y -min 0 -title "Budget (W)" -tickfont $::tickfont -titlefont $::axisfont -subdivisions 5
+    $winname.g.plot axis configure x -hide 1
+    $winname.g.plot legend configure -hide 0 -font $::legendfont -padx $::legendpadx -pady $::legendpady -ipadx $::legendipadx -ipady $::legendipady -anchor $::legendanchor
+    $winname.g.plot grid on
+    pack $winname.g.plot -side left -expand yes -fill both
+    pack $winname.g -side top -expand yes -fill both
+
+    #Rbc_ZoomStack $winname.g.plot
+    Rbc_Crosshairs $winname.g.plot
+    Rbc_ActiveLegend $winname.g.plot
+    Rbc_PrintKey $winname.g.plot
+
+    cluster_budget_new_blade
+    cluster_budget_new_data
+}
+
+body ame_2_14::new_budget {} {
+    # Update barchart
+    if {[winfo exists .cluster_budget]} {cluster_budget_new_data}
+
+    #Update linechart
+
+    # Number of historical points to plot in graph
+    set hist 100
+
+    #update vectors in graph
+    vector ::v_value_${name}_budget
+    vector ::v_timestamp_${name}_budget
+    ::v_value_${name}_budget dup v
+    ::v_timestamp_${name}_budget dup t
+    
+    set d [expr [::v_value_${name}_budget length] - $hist ]
+    if {$d > 0} {
+	v set [v range $d end]
+	t set [t range $d end]
+    }
+    v append $budget
+    t append [expr [clock clicks -milliseconds] - $::start_time]
+    
+    # NOTE: setting vectors will update any graphs automatically
+    v dup ::v_value_${name}_budget
+    t dup ::v_timestamp_${name}_budget
+    
+    #eval $::new_data_callback
+
+    set winname .budgetgraph
+    
+    if {$::options(gui) && [winfo exists $winname.g.plot]} {
+	# If min/max don't make sense, then use our own
+	set maximum [vector expr max(t)]
+	set minimum [vector expr min(t)]
+	if {$maximum <= $minimum} {
+	    #make sure max is greater than min for blt graphs
+	    set maximum [expr $minimum + 1.0]
+	}	
+    }
+}
+
+
+
+# Make budget graph scroll smoothly by updating it every 1 second
+proc ame_2_14::update_budget_every_1_second {} {
+    foreach amec [find objects -class ame_2_14] {
+	$amec new_budget
+    }
+    set update_budget_after [after 1000 [code update_budget_every_1_second]]
+}
+
+#
+# Get number and positions of CPUs
+#
+
+body ame_2_14::get_cpus_sync {} {
+    ::amesterdebug::debug bc "bc_blade_get_cpus $this"
+    set result [send_sync 3a 3b [binary format "H2" "03"]]
+    get_cpus_callback [lindex $result 0] [lindex $result 1]
+}
+
+body ame_2_14::get_cpus_callback {status databytes} {
+    ::amesterdebug::debug bc "bc_blade_get_cpus_callback $this"
+    set n [binary scan $databytes "c" v]
+    set v [expr $v & 0x0ff]
+    set cpumask $v
+    set numcpu_t 0
+    set cpulist_t {}
+    while {$v != 0} {
+	if {$v | 1} {
+	    lappend cpulist_t $numcpu_t
+	}
+	# look at next cpu position
+	set v [expr $v >> 1]
+	incr numcpu_t
+    }
+    set cpulist $cpulist_t
+    set numcpu $numcpu_t
+
+    foreach cpu $cpulist {
+	get_cpu_throttle_sync $cpu
+    }
+
+    if {$numcpu == 0} {
+	::amesterdebug::debug 1 "WARNING: no processors detected for [$host cget -name]"
+    }
+}
+
+
+#
+# Get Frequency
+#
+
+body ame_2_14::get_frequency_sync {} {
+    ::amesterdebug::debug bc "bc_blade_get_frequency $this"
+    set result [send_sync 3a 3b [binary format "H*" "0806"]]
+    get_frequency_callback [lindex $result 0] [lindex $result 1]
+}
+
+body ame_2_14::get_frequency_callback {status databytes} {
+    ::amesterdebug::debug bc "bc_blade_get_frequency_callback $this"
+    if {$status != 0} {return}
+    set freq 0
+    # Set blade frequency to the greatest frequency found among all cpus
+    # (It looks like the BIOS sets a speed for the first one and zero for the rest.)
+    binary scan $databytes "S" freq
+    set frequency [expr $freq & 0x0ffff]
+}
+
+##
+# Read a specific internal variable by name
+#
+# Variables supported:
+#   api_major:      Major revision number of the API 
+#   api_minor:      Minor revision number of the API
+#   amec_ver_major: Major revision number of the AMEC
+#   amec_ver_minor: Minor revision number of the AMEC
+#   numcpu:         Number of processors installed on this blade
+#   cpulist:        A list of the processors installed on this blade
+#   sensors:        A list of all supported sensor objects
+#   monitored:      A list of all sensor objects with monitoring enabled
+#   control_enable: Control dialog: The boolean checkbox that activates the 
+#                   control loop 
+#   control_type:   Control dialog: The numeric "type" of control 
+#                   (1=throttling, 2=DVS) 
+#   control_a:      Control dialog: The "A" parameter of the control loop 
+#   control_16ms:   Control dialog: The 16ms target power
+#   control_160ms:  Control dialog: The 160ms target power
+#   control_1s:     Control dialog: The 1s target power
+#   sensorname:     Takes a whitespace-delimited string list of sensor names as
+#                   a second argument and returns a list of sensor objects
+#                   corresponding to those names.  For example:
+#                     $amec get sensorname "pwr1s spd1msCPU0"
+#
+# Parameter what: The name of the variable in question
+# Parameter args: Variable-specific options
+# Returns: Value of the given variable, or an error code if no such 
+#          variable exists
+body ame_2_14::get {what args} {
+	switch $what {
+		api_major {return $api_major}
+		api_minor {return $api_minor}
+	    ame_version {return $ame_version}
+	    ame_date {return $ame_date}
+	    api_version {return $api_version}
+		amec_ver_major {return $amec_ver_major}
+		amec_ver_minor {return $amec_ver_minor}
+		numcpu {return $numcpu}
+		cpulist {return $cpulist}
+	    budget {return $budget}
+	    frequency {return $frequency}
+		sensors {return $sensorobjs_all}
+		monitored {return $sensorobjs}
+		control_enable {return $control_enable}
+		control_type {return $control_type}
+		control_a {return $control_a}
+		control_16ms {return $control_16ms}
+		control_160ms {return $control_160ms}
+		control_1s {return $control_1s}
+		control_ptvm16ms {return $control_ptvm16ms}
+		control_ptvm160ms {return $control_ptvm160ms}
+		control_ptvm1s {return $control_ptvm1s}
+		control_ptv16ms {return $control_ptv16ms}
+		control_ptv160ms {return $control_ptv160ms}
+		control_ptv1s {return $control_ptv1s}
+		budget_low {return $budget_low}
+		budget_high {return $budget_high}
+		sensorname {
+			#args will be a concat of remaining parameters into a 1 item list.
+		        set templist {}
+			set thesensors [split [lindex $args 0]]
+			foreach sn $thesensors {
+				set obj [find object ${this}_${sn}]
+				lappend templist $obj
+			}
+			return $templist
+		}
+		default {return -code error "Invalid arguement for ame_2_14:get : $what $args"}
+	}
+}

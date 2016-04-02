@@ -1,0 +1,180 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+#
+#New choice select
+#
+package provide multiselect 1.0
+
+package require Tk
+
+class multiselect {
+    public method multiselect_ok {current {cmd {}}}
+    public method multiselect_cancel {}
+    public method multiselect_all {}
+    public method multiselect_none {}
+    private method init {all current {cmd {}}}
+
+    private method Scroll_Set {scrollbar geoCmd offset size}
+    private method Scrolled_Listbox { f args }
+    private method List_Select { parent values current }
+    private method ListTransferSel {src dst}
+    private method ListDeleteSel {w y}
+
+
+    public variable all ""
+    public variable current ""
+    public variable name ""
+    public variable winname ""
+
+    constructor {all current {cmd {}}} {
+	regsub -all "::" $this "" name
+	init $all $current $cmd
+    }
+
+    destructor {
+	destroy $winname
+    }
+}
+
+
+body multiselect::Scroll_Set {scrollbar geoCmd offset size} {
+	if {$offset != 0.0 || $size != 1.0} {
+		eval $geoCmd					;# Make sure it is visible
+	}
+	$scrollbar set $offset $size
+}
+
+
+body multiselect::Scrolled_Listbox { f args } {
+	frame $f
+	listbox $f.list \
+	    -xscrollcommand [code $this Scroll_Set $f.xscroll \
+				 [list grid $f.xscroll -row 1 -column 0 -sticky we]] \
+	    -yscrollcommand [code $this Scroll_Set $f.yscroll \
+				 [list grid $f.yscroll -row 0 -column 1 -sticky ns]]
+	eval {$f.list configure} $args
+	scrollbar $f.xscroll -orient horizontal \
+		-command [list $f.list xview]
+	scrollbar $f.yscroll -orient vertical \
+		-command [list $f.list yview]
+	grid $f.list -sticky news
+	grid rowconfigure $f 0 -weight 1
+	grid columnconfigure $f 0 -weight 1
+	return $f.list
+}
+
+
+body multiselect::List_Select { parent values current } {
+	# Create two lists side by side
+	frame $parent
+	frame $parent.fp
+	frame $parent.fc
+	
+	set choices [Scrolled_Listbox $parent.fc.choices -width 0 -height 10 -selectmode extended]
+	set picked [Scrolled_Listbox $parent.fp.picked -width 0 -height 10 -selectmode extended]
+	label $parent.fc.l -text "Available choices" -anchor w
+	label $parent.fp.l -text "Selected" -anchor w
+	pack $parent.fc.l -side top -fill x
+	pack $parent.fc.choices -side top -expand true -fill both
+	pack $parent.fp.l -side top -fill x
+	pack $parent.fp.picked -side top -expand true -fill both
+	pack $parent.fc $parent.fp -side left -expand true -fill both
+
+	# Selecting in choices moves items into picked
+	bind $choices <ButtonRelease-1> \
+		[code $this ListTransferSel %W $picked]
+
+	# Selecting in picked deletes items
+	bind $picked <ButtonRelease-1> [code $this ListDeleteSel %W %y]
+
+	# Insert all the choices
+	foreach x $values {
+		$choices insert end $x
+	}
+	foreach x $current {
+		$picked insert end $x
+	}
+}
+
+body multiselect::ListTransferSel {src dst} {
+    set current [$dst get 0 end]
+    foreach i [$src curselection] {
+	# Only insert items not already picked
+	set item [$src get $i]
+	if {[lsearch $current $item] == -1} {
+	    $dst insert end $item
+	}
+    }
+    $dst see end
+}
+body multiselect::ListDeleteSel {w y} {
+	foreach i [lsort -integer -decreasing [$w curselection]] {
+		$w delete $i
+	}
+}
+
+
+body multiselect::multiselect_ok {current {cmd {}}} {
+    set r [$winname.f.fp.picked.list get 0 end]
+    upvar \#0 $current c
+    set c $r
+    namespace eval :: $cmd
+    delete object $this
+}
+
+body multiselect::multiselect_all {} {
+    set current [$winname.f.fp.picked.list get 0 end]
+    foreach item [$winname.f.fc.choices.list get 0 end] {
+	# Only insert items not already picked
+	if {[lsearch $current $item] == -1} {
+	    $winname.f.fp.picked.list insert end $item
+	}
+    }
+}
+
+body multiselect::multiselect_none {} {
+    $winname.f.fp.picked.list delete 0 end
+}
+
+body multiselect::multiselect_cancel {} {
+    delete object $this
+}
+
+body multiselect::init {all current {cmd {}}} {
+
+    #global stats 
+    #global stats_list
+    upvar \#0 $all a
+    upvar \#0 $current c
+    set winname ".$name"
+
+    # if window exists, raise it
+    if {[winfo exists $winname]} {
+	focus $winname
+	raise $winname
+	return
+    }
+    
+    toplevel $winname
+    wm title $winname "Select"
+    wm resizable $winname 1 1
+
+    List_Select $winname.f $a $c
+
+    frame $winname.bbar -relief raised -bd 2
+    button $winname.bbar.all -background lightblue -text "All" -command [code $this multiselect_all]
+    button $winname.bbar.none -background lightblue -text "None" -command [code $this multiselect_none]
+    button $winname.bbar.ok -background lightblue -text "Ok" -command [code $this multiselect_ok $current $cmd]
+    button $winname.bbar.cancel -background lightblue -text "Cancel" -command [code $this multiselect_cancel]
+    pack $winname.bbar.all $winname.bbar.none -side left
+    pack $winname.bbar.ok $winname.bbar.cancel -side right 
+
+    pack $winname.f -side top -expand true -fill both 
+    pack $winname.bbar -expand false -fill x -side bottom
+    #wm $winname.f resizable 1 1
+    #grid $winname.f -sticky news
+    #grid $winname.bbar -sticky ew
+}
+

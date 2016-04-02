@@ -1,0 +1,1047 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+#--------------------------------------------------------------------
+#
+# Rmcp host procedures
+#
+# Note: We connect using RMCP+ and assume that user USERID can 
+# connect with admin privelege and use unauthenticated, unencrypted
+# packets.
+#
+#--------------------------------------------------------------------
+
+package require md5
+
+if {$::options(gui)} {
+    .mbar.file.menu.connect add command -label "Rack-mount server (BMC)..." -command "rmcpconnect \#auto"
+}
+ 
+class rmcpconnect {
+    public variable name "mybmc"
+    public variable addr ""
+    public variable close 1
+    public variable window ""
+
+    public method make_gui {}
+    public method connect {}
+
+    constructor args {
+	if {$::options(gui)} {make_gui}
+    }
+
+    destructor {
+	#delete GUI
+	if {$window ne ""} {
+	    destroy $window
+	}
+    }
+
+}
+
+body rmcpconnect::make_gui {} {
+
+    if {[winfo exists $window]} {
+	focus $window
+	raise $window
+	wm deiconify $window
+	return
+    }
+
+    regsub -all "::" .rmcpconnect_$this "" window
+
+    toplevel $window
+    wm title $window "Connect to rack-mount system (BMC)"
+    
+    label $window.name_l -text "System name" -anchor w
+    entry $window.name -textvariable [scope name]
+    grid $window.name_l $window.name -sticky news -row 0
+
+    label $window.addr_l -text "IP address" -anchor w
+    entry $window.addr -textvariable [scope addr]
+    grid $window.addr_l $window.addr -sticky news -row 1
+
+    checkbutton $window.close -text "Close this window after connecting" -variable [scope close]
+    grid $window.close -row 6 -sticky w
+
+    button $window.connect -text "Connect" -command [code $this connect] -background lightblue
+    grid $window.connect -row 8 -sticky news
+}
+
+body rmcpconnect::connect {} {
+    set obj ""
+    set result ""
+    catch {$window.connect configure -state disabled}
+    if {[catch {set obj [rmcp ::$name -addr $addr]} result]} {
+	puts "There was an error connecting: result = $result"
+	bgerror $result
+    } else {
+	if {![$obj isa rmcp]} {
+	    puts "There was an error connecting: obj= $obj"
+	} elseif {$close} {delete object $this}
+    }
+    catch {$window.connect configure -state normal}
+}
+
+
+ 
+class rmcp {
+    inherit host
+
+    constructor {args} {
+	::amesterdebug::debug rmcp "rmcp constructor for $this"
+	eval configure $args
+	if {$addr eq ""} {
+	    return -code error "Missing a required parameter, -addr <IP address>"
+	}
+
+	if {$::options(gui)} {make_gui}
+
+	# Get basic rmcp info (Number of processors, VPD, etc.)
+	#if {[catch {init} initresult]} {
+	#    return -code error "Can't initialize rmcp object: $initresult"
+	#}
+	rmcp_open
+	init
+
+	if {$::options(gui)} {host_window_update a b c}
+    }
+    
+    destructor {
+	::amesterdebug::debug rmcp "$this destructor"
+	#FIXME: delete GUI associated with rmcp
+	#FIXME: delete all callbacks (bc holds them...)
+
+	# Cancel any pending afters
+	after cancel $ipmi_health_after
+    }
+
+    # Get basic info on rmcp (initialization)
+    public method init {}
+
+    public variable ithread ""
+    public method ipmi_thread_start {}
+
+    #
+    # Scope
+    #
+    public method scope_make_window {}
+
+    #Performance metrics for workload graphs
+    public variable perfmetric_latency 0
+    public variable perfmetric_throughput 0
+
+    #GUI
+    public method make_gui {}
+
+    #Communication
+    public variable wait_send_sync
+    public variable wait_send_sync_databytes
+    public variable wait_send_sync_status
+    public method ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}}
+    public method ipmi_send_sync_callback {myuid status databytes}
+    public method ipmi_send {rssa chan lun netfn cmd data callback priority}
+    public variable ipmi_msgq {}
+    public variable inprogress
+    public method ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {timeout {3000}} {position end}}
+    public method ipmi_dequeue {}
+    public method rmcp_process {}
+    public method ipmi_health {}
+    public variable ipmi_health_period 1000 {ipmi_health}
+    public variable ipmi_health_after 0
+
+    public variable rmcp_status "disconnected"
+    public variable rmcp_sock 0
+    public variable rmcp_port 623
+    public variable rmcp_open_after 0
+    public method rmcp_open {}
+    public method rmcp_close {}
+    public method rmcp_timeout {}
+    public method rmcp_send {packet}
+    public method rmcp1.5_send {rssa chan lun netfn cmd data}
+    public method rmcp1.5_format_ipmi_packet {rssa chan lun netfn cmd data}
+    public method rmcp2.0_send {rssa chan lun netfn cmd data}
+    public method rmcp2.0_format_ipmi_packet {rssa chan lun netfn cmd data}
+    public method rmcpplus_open_session_packet {}
+    public method rakp1_packet {}
+    public method rakp3_packet {}
+    public variable ipmi_authtype 0
+    public variable ipmi_authcode {}
+    public variable ipmi_sess_seq_in 0
+    public variable ipmi_sess_seq_out 0
+    public variable ipmi_sess_id 0
+    public variable ipmi_sess_challenge 0
+    public variable ipmi_priv 4
+
+    public variable managed_system_sess_id 0
+    public variable remote_cons_sess_id 0
+    public variable managed_system_random 
+    public variable managed_system_guid
+    public variable key_exchange_authentication_code ""
+    public variable rakp_tag 0
+
+    
+    public variable username "admin"
+    #was USERID for x86 IBM
+
+    #IPMI2
+
+    #Get Channel Authentication Capabilities response
+    public variable IPMI2capability 0
+    public variable authenablednone 0
+    public variable authenabledmd2 0
+    public variable authenabledmd5 0
+    public variable authenabledpass 0
+    public variable kgstatus 0
+    public variable permessageauth 0
+
+    #Authentication algorithm selected
+    #0=none, 1=SHA1, 2=RAKP-HMAC-MD5
+    public variable authalg 0
+
+    public variable supportsipmi1_5 0
+    public variable supportsipmi2_0 0
+
+
+    #AME
+    #List of AME Components on host
+    public variable ameclist {}
+    public method get {what args}
+
+}
+
+body rmcp::init {} {
+    ::amesterdebug::debug rmcp "init"
+
+    ipmi_health
+    # GET GUID
+    #set result [ipmi_send_sync 20 00 00 06 37 {}]
+
+    # get channel authentication capabilities
+    #  code cc=wrong data
+    #set result [ipmi_send_sync 20 00 00 06 38 [binary format "H*" "0000"]]
+
+    # Get session challenge. Response=82H null user name not enabled
+    #set data [binary format "ca*c*" 0 USERID {0 0 0 0 0 0 0 0 0 0}]
+    #binary scan $data "H*" alpha
+    #puts "alpha=$alpha"
+    #set result [ipmi_send_sync 20 00 00 06 39 $data]
+
+    # NOTE: This is required to make RMCP work.  Don't know why yet. Probably an issue with starting the networking.
+    set result [ipmi_send_sync 20 00 00 06 01 {} ]
+    binary scan  [lindex $result 1] "H*" datahex
+    ::amesterdebug::debug rmcp "sent 20 6 0 1"
+    ::amesterdebug::debug rmcp "IPMI completion code = [lindex $result 0]"
+    ::amesterdebug::debug rmcp "databytes = $datahex"
+    
+    set ameclist [ame::init_ame_objects $name]
+    return     
+
+}
+
+body rmcp::get {what args} {
+    switch $what {
+	ameclist {return $ameclist}
+	amec {return [lindex $ameclist 0]}
+	rmcp_status {return $rmcp_status}
+	default {return -code error "unknown command for amec: $what $args"}
+    }
+    
+}
+
+
+body rmcp::make_gui {} {
+    ::amesterdebug::debug gui "rmcp_make_host_window $name"
+
+    # Add all sensor labels
+    # These are the stats that are created as labels
+    set host_label_list [list {name} {addr} {ameutilport} {link}]
+
+    foreach {key}  $host_label_list  {
+    	if {![info exists ::host_stats_anchor($key)]} {
+    	    set anchor e
+    	} else {
+    	    set anchor $::host_stats_anchor($key)
+    	}
+    	host_window_add $name $key [label .host.c.f.${name}_${key} -textvariable [scope $key] -anchor $anchor -font $::fixedfont] $key
+    }
+
+}
+
+
+
+
+
+#
+# Rmcp Communication
+#
+
+
+# ipmi_send_sync
+#
+# This is a command to send an ipmi cmd to a rmcp.
+# This command waits for a response, prints it, then returns.
+
+body rmcp::ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}} {
+    set myuid [uid_create]
+    set callback "ipmi_send_sync_callback $myuid \$status \$databytes"
+    ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
+    ::vwait [scope wait_send_sync($myuid)]
+    array unset wait_send_sync $myuid
+    set myname wait_send_sync_status($myuid)
+    eval set status $$myname
+    set myname wait_send_sync_databytes($myuid)
+    eval set databytes $$myname
+    array unset wait_send_sync_status $myuid
+    array unset wait_send_sync_databytes $myuid
+    return [list $status $databytes]
+}
+
+body rmcp::ipmi_send_sync_callback {myuid status databytes} {
+    set wait_send_sync_status($myuid) $status
+    set wait_send_sync_databytes($myuid) $databytes
+    set wait_send_sync($myuid) 1
+}
+
+body rmcp::ipmi_send {rssa chan lun netfn cmd data callback priority} {
+    ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
+}
+
+# based on bc::net_send_msg
+#
+#
+body rmcp::ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {timeout {3000}} {position end}} {
+
+    #Do we still need tags?
+    set tag 0
+
+    set item [list $priority $tag $callback $timeout $rssa $chan $lun $netfn $cmd $data]
+    set ipmi_msgq [linsert $ipmi_msgq $position $item]
+    if {[llength $ipmi_msgq] == 1} {
+	ipmi_dequeue
+    }    
+}
+
+# based on bc::net_write_msg
+#
+#
+body rmcp::ipmi_dequeue {} {
+    ::amesterdebug::debug local "$this ipmi_dequeue"
+    if {![llength $ipmi_msgq]} {
+	return
+    }
+    if {$rmcp_status ne "connected"} {
+	::amesterdebug::debug rmcp "ipmi_dequeue: not connected ($rmcp_status)"
+	return
+    }
+
+    # sort message queue by priority
+    # note: messages of the same priority remain in the same order.
+    #   Therefore, inserting into the front or end of the msgq will add the
+    #   message at the beginning or end of messages with the same priority.
+    # 
+    set ipmi_msgq [lsort -integer -index 0 $ipmi_msgq]
+
+    set item [lindex $ipmi_msgq 0]
+    set priority [lindex $item 0]
+    set tag [lindex $item 1]
+    set callback [lindex $item 2]
+    set timeout [lindex $item 3]
+    set rssa [lindex $item 4]
+    set chan [lindex $item 5]
+    set lun [lindex $item 6]
+    set netfn [lindex $item 7]
+    set cmd [lindex $item 8]
+    set data [lindex $item 9]
+    
+    if {[info exists inprogress($tag,tag)]} {
+	::amesterdebug::debug local "Message for $tag pending with same tag. ${netfn}${cmd}${data}"
+	return
+    }
+
+    ::amesterdebug::debug local "dequeue: tag=$tag msg=${netfn}${cmd}${data}"
+    set inprogress($tag,tag) $tag
+    set inprogress($tag,priority) $priority
+    set inprogress($tag,callback) $callback
+    set inprogress($tag,timeout) $timeout
+    set inprogress($tag,rssa) $rssa
+    set inprogress($tag,chan) $chan
+    set inprogress($tag,lun) $lun
+    set inprogress($tag,netfn) $netfn
+    set inprogress($tag,cmd) $cmd
+    set inprogress($tag,data) $data
+
+    set ipmi_msgq [lreplace $ipmi_msgq 0 0]
+
+    rmcp2.0_send $rssa $chan $lun $netfn $cmd $data
+
+    if {$timeout != 0} {
+	set inprogress($tag,after) [after $timeout [code $this rmcp_timeout]]
+	::amesterdebug::debug after "after set $inprogress($tag,after) for $this"
+    }
+
+}
+
+
+#Return a packet for RMCP+ Open Session
+body rmcp::rmcpplus_open_session_packet {} {
+    # version=6, reserved=0, seq=255 for IPMI, class=7 for IPMI
+    set rmcphead [binary format "cccc" 6 0 255 7]
+
+    #
+    #make ipmi payload
+    #
+
+    incr rakp_tag
+    # Pick highest previlege level
+    set priv 0 
+    set reserved2 [binary format "cc" 0 0]
+    set x [binary format "H2H2H2H2" 14 e2 38 64]
+    binary scan $x "i" remote_cons_sess_id
+
+    #make authentication payload. algorithm = SHA1
+    # payloadtype: authentication algorithm
+    set payloadtype 0 
+    # payloadlen: From open session command definition
+    set payloadlen 8 
+    #set authalg 1 ; # SHA1
+    set authalg 0 ; # none
+
+    if {$authenabledmd5} {
+	set authalg 2
+	::amesterdebug::debug rmcp "Using authentication RAKP-HMAC-MD5"
+    } else {
+	set authalg 0
+	::amesterdebug::debug rmcp "Using authentication RAKP-none"
+    }
+    set reserved3 [binary format "ccc" 0 0 0]
+
+    #authentication payload bytes 9:16
+    set auth_payload [binary format "ca*cca*" $payloadtype $reserved2 $payloadlen $authalg $reserved3]
+
+    #make integrity payload. Algorithm=none
+    set integ_payload [binary format "ca*cca*" 1 $reserved2 $payloadlen 0 $reserved3]
+
+    #make confidentiality payload. Algorithm=none
+    set conf_payload [binary format "ca*cca*" 2 $reserved2 $payloadlen 0 $reserved3]
+
+    #assemble ipmi payload 
+    set ipmipayload [binary format "cca*ia*a*a*" $rakp_tag $priv $reserved2 $remote_cons_sess_id $auth_payload $integ_payload $conf_payload]
+
+    #make ipmi session header
+    set authtype 6
+    set payloadtype 16 ;# 10h = RMCP Open Session
+    set sessid [binary format "cccc" 0 0 0 0]
+    set seq [binary format "cccc" 0 0 0 0]
+    set ipmisessionhead [binary format "cca*a*s" $authtype $payloadtype $sessid $seq [string length $ipmipayload]]
+    
+    #construct final packet
+    set outmsg [binary format "a*a*a*" $rmcphead $ipmisessionhead $ipmipayload]
+    return $outmsg
+}
+
+body rmcp::rmcp1.5_format_ipmi_packet {rssa chan lun netfn cmd data} {
+    #make RMCP header
+    # version=6, reserved=0, seq=255 for IPMI, class=7 for IPMI
+    set rmcphead [binary format "cccc" 6 0 255 7]
+
+    set ipmilen 0
+    set legacypad [binary format "c" 0]
+    
+    #make ipmi session header
+    # auth=0 (no authentication)
+    # seq=0 (outside a session)
+    # sessid=0 (outside a session)
+    set netfnbyte [binary format "H2" $netfn]
+    binary scan $netfnbyte "c" netfnvalue
+    set lunbyte [binary format "H2" $lun]
+    binary scan $lunbyte "c" lunvalue
+    ::amesterdebug::debug rmcp "lun=$lunvalue netfn=$netfnvalue"
+    set netfnlun [expr ($netfnvalue << 2) | $lunvalue]
+    binary scan $rssa "H2" rssavalue
+    set check1 [expr - (($rssavalue + $netfnlun) % 256)]
+    set swid 0
+    set swseq 0
+    set check2 0
+    set datastring [binary format "ccH2a*" $swid $swseq $cmd $data]
+    for {set i 0} {$i < [string length $datastring]} {incr i} {
+	binary scan $datastring "@${i}c" byte
+	#::amesterdebug::debug rmcp [format "byte=%02x" $byte]
+	set check2 [expr ($check2 + $byte) % 256]
+    }
+    set check2 [expr - $check2]
+    set ipmipayload [binary format "H2cca*c" $rssa $netfnlun $check1 $datastring $check2]
+
+    set payloadtype 0; #unencrypted, unauthenticated IPMI
+    set ipmisessionhead [binary format "ciic" $ipmi_authtype $ipmi_sess_seq_in $ipmi_sess_id [string length $ipmipayload]]
+    set sesstrail {}
+    if {$ipmi_authcode ne {}} {
+	set sesstrail [binary format "c" $ipmi_authcode]
+    }
+    set outmsg [binary format "a*a*a*a*" $rmcphead $ipmisessionhead $ipmipayload $sesstrail]
+    return $outmsg
+}
+
+body rmcp::rmcp1.5_send {rssa chan lun netfn cmd data} {
+    set outmsg [rmcp1.5_format_ipmi_packet $rssa $chan $lun $netfn $cmd $data]
+    rmcp_send $outmsg
+}
+
+body rmcp::rmcp2.0_format_ipmi_packet {rssa chan lun netfn cmd data} {
+    #make RMCP header
+    # version=6, reserved=0, seq=255 for IPMI, class=7 for IPMI
+    set rmcphead [binary format "cccc" 6 0 255 7]
+
+    set ipmilen 0
+    set legacypad [binary format "c" 0]
+    
+    #make ipmi session header
+    # auth=0 (no authentication)
+    # seq=0 (outside a session)
+    # sessid=0 (outside a session)
+    set netfnbyte [binary format "H2" $netfn]
+    binary scan $netfnbyte "c" netfnvalue
+    set lunbyte [binary format "H2" $lun]
+    binary scan $lunbyte "c" lunvalue
+    ::amesterdebug::debug rmcp "lun=$lunvalue netfn=$netfnvalue"
+    set netfnlun [expr ($netfnvalue << 2) | $lunvalue]
+    binary scan $rssa "H2" rssavalue
+    set check1 [expr - (($rssavalue + $netfnlun) % 256)]
+    set swid 0
+    set swseq 0
+    set check2 0
+    set datastring [binary format "ccH2a*" $swid $swseq $cmd $data]
+    for {set i 0} {$i < [string length $datastring]} {incr i} {
+	binary scan $datastring "@${i}c" byte
+	#::amesterdebug::debug rmcp [format "byte=%02x" $byte]
+	set check2 [expr ($check2 + $byte) % 256]
+    }
+    set check2 [expr - $check2]
+    set ipmipayload [binary format "H2cca*c" $rssa $netfnlun $check1 $datastring $check2]
+
+    #Create IPMI Session Header
+    set authtype 6; #RMCP+ format
+    set payloadtype 0; #unencrypted, unauthenticated IPMI
+    incr ipmi_sess_seq_in
+    set len [string length $ipmipayload]
+    ::amesterdebug::debug rmcp "ipmi payload is $len bytes"
+    set ipmisessionhead [binary format "cciis" $authtype $payloadtype $managed_system_sess_id  $ipmi_sess_seq_in $len]
+ 
+    #Create IPMI Session Trailer
+    set sesstrail {}; #Nothing because we send unauthenticated packets
+
+    set outmsg [binary format "a*a*a*a*" $rmcphead $ipmisessionhead $ipmipayload $sesstrail]
+    return $outmsg
+}
+
+body rmcp::rmcp2.0_send {rssa chan lun netfn cmd data} {
+    set outmsg [rmcp2.0_format_ipmi_packet $rssa $chan $lun $netfn $cmd $data]
+    rmcp_send $outmsg
+}
+
+body rmcp::rmcp_send {outmsg} {
+    binary scan $outmsg "H*" all
+    ::amesterdebug::debug rmcp "sending packet $all"
+    if {[catch {puts -nonewline $rmcp_sock $outmsg} result]} {
+	puts "error during rmcp ipmi send: $result"
+    } else {
+	#puts "sent rmcp ipmi"
+    }
+}
+
+body rmcp::rmcp_process {} {
+    ::amesterdebug::debug rmcp "$this rmcp_process"
+    set status ""
+    set ipmi_databytes ""
+    set result ""
+
+    #if {[eof $rmcp_sock] || [catch {set packet [read $rmcp_sock ]} result]} 
+    if {[catch {set packet [read $rmcp_sock ]} result]} {
+	::amesterdebug::debug rmcp "rmcp_process: can't read packet. result=$result"
+	return
+    }   
+    binary scan $packet "H*" all
+    ::amesterdebug::debug rmcp "packet: $all"
+
+    set n [binary scan $packet "c" rmcp(version)]
+    ::amesterdebug::debug rmcp "n=$n"
+    if {!($n==1 && $rmcp(version) == 6)} {
+	::amesterdebug::debug rmcp "ERROR: not an RMCP packet.  n=$n"	
+	::amesterdebug::debug rmcp "n=$n"
+	::amesterdebug::debug rmcp "version=$rmcp(version)"
+	return
+    }
+
+    set n [binary scan $packet "@1ccc" rmcp(reserved) rmcp(seq) rmcp(class)]
+    ::amesterdebug::debug rmcp "n=$n class=$rmcp(class)"
+
+    if {$n != 3} {
+	::amesterdebug::debug rmcp "ERROR: RMCP packet in wrong format. Ignore. n=$n"	
+	return
+    }
+
+
+
+    switch -- $rmcp(class) {
+	6 {
+	    ::amesterdebug::debug rmcp "AFS message received"
+	    set n [binary scan $packet "@4Icccc" rmcp(iana) rmcp(type) rmcp(tag) rmcp(reserved2) rmcp(datalen)]
+	    ::amesterdebug::debug rmcp [format "version=%i seq=%i class=%02x iana=%08x type=%02x tag=%02x len=%i" $rmcp(version) $rmcp(seq) $rmcp(class) $rmcp(iana) $rmcp(type) $rmcp(tag) $rmcp(datalen)]
+	    binary scan $packet "@12H*" all
+	    ::amesterdebug::debug rmcp "rmcpdata: $all"
+	    if {$rmcp(type) == 0x40} {
+		::amesterdebug::debug rmcp "ASF pong message"
+		if {$rmcp_status == "opening"} {
+		    #send IPMI Get Channel Authentication Capabilities
+		    # 8e= IPMI v2.0+ extended data on THIS channel
+		    # 04 = Admin level access
+		    rmcp1.5_send 20 00 00 06 38 [binary format "H*" "8e04"]
+		}
+	    }
+	}
+	7 {
+	    ::amesterdebug::debug rmcp "RMCP IPMI message"
+
+	    binary scan $packet "@4c" authtype
+
+	    switch -- $authtype {
+		0 { 
+		    # authtype none
+
+		    binary scan $packet "@13cccccccc" ipmilen rqaddr netfnlun check1 rsaddr rqseqlun cmd cc
+		    set cc [expr $cc & 0x0ff]
+		    ::amesterdebug::debug rmcp "ipmilen=$ipmilen rqaddr=$rqaddr netfnlun=$netfnlun check1=$check1 rsaddr=$rsaddr rqseqlun=$rqseqlun cmd=$cmd cc=$cc"
+		    if {$cc!=0} {
+			rmcp_close
+			return -code error [format "IPMI completion code = 0x%02x" $cc]
+		    }
+		    set netfn [expr ($netfnlun >> 2)]
+		    # datalen is the  number of bytes in IPMI response completion code and data
+		    set datalen [expr $ipmilen - 7]
+		    ::amesterdebug::debug rmcp "ipmi length = $ipmilen"
+		    
+		    switch -- $netfn {
+			7 {
+			    ::amesterdebug::debug rmcp "netfn app response"
+			    switch -- $cmd {
+				56 {
+				    # Get Channel Authentication Capabilites
+				    if {$datalen != 9} {
+					return -code error "Wrong datalen $datalen for Get Channel Authentication Capabilites"
+				    }
+				    binary scan $packet "@21cccca3c" channel auth1 auth2 extend oemid oemaux
+				    binary scan $oemid "H*" oemascii
+				    ::amesterdebug::debug rmcp [format "channel=0x%02x auth1=0x%02x auth2=0x%02x extend=0x%02x oemid=$oemascii oemaux=0x%02x" $channel $auth1 $auth2 $extend $oemaux]
+				    if {$auth1 & 0x80} {
+					set IPMI2capability 1
+				    } else {
+					set IPMI2capability 0
+				    }
+				    ::amesterdebug::debug rmcp "IPMI2Capability=${IPMI2capability}"
+				    if {$auth1 & 0x01} {
+					set authenablednone 1
+					::amesterdebug::debug rmcp "auth=none"
+				    }
+				    if {$auth1 & 0x02} {
+					set authenabledmd2 1
+					::amesterdebug::debug rmcp "auth=md2"
+				    }
+				    if {$auth1 & 0x04} {
+					set authenabledmd5 1
+					::amesterdebug::debug rmcp "auth=md5"
+				    }
+				    if {$auth1 & 0x20} {
+					set authenabledpass 1
+					::amesterdebug::debug rmcp "auth=pass/key"
+				    }
+
+				    set kgstatus [expr $auth2 & 0x20]
+				    ::amesterdebug::debug rmcp "Kg = $kgstatus"
+				    
+				    set permessageauth [expr $auth2 & 0x10]
+				    if {$permessageauth==0} {
+					::amesterdebug::debug rmcp "Per-message Authentication enabled"
+				    } else {
+					::amesterdebug::debug rmcp "Per-message Authentication disabled"
+				    }
+
+				    set userlevelauthstatus [expr $auth2 & 0x80]
+				    if {$userlevelauthstatus==0} {
+					::amesterdebug::debug rmcp "User Level Authentication enabled"
+				    } else {
+					::amesterdebug::debug rmcp "User Level Authentication disabled"
+				    }
+
+				    if {$extend & 0x01} {
+					set supportsipmi1_5 1
+					::amesterdebug::debug rmcp "Channel supports IPMI 1.5"
+				    }
+				    if {$extend & 0x02} {
+					set supportsipmi2_0 1
+					::amesterdebug::debug rmcp "Channel supports IPMI 2.0"
+				    }
+
+				    #Figure out some stuff based on the returned data
+				    
+				    
+				    if {$cc == 0 && $rmcp_status eq "opening"} {
+					# RMCP+ Open Session Request
+					rmcp_send [rmcpplus_open_session_packet]
+					
+					#send IPMI Get Session Challenge command
+					# Note: 4 = request password auth type
+					#set data [binary format "ca*c*" 4 USERID {0 0 0 0 0 0 0 0 0 0}]
+					#set data [binary format "ca*c*" 0 arl {0 0 0 0 0 0 0 0 0 0 0 0 0}]
+					#rmcp1.5_send 20 00 00 06 39 $data
+				    }
+				}
+				57 { 
+				    # Get Session Challenge response
+				    ::amesterdebug::debug rmcp "Get Session Challenge response"
+				    if {$datalen != 21} {
+					return -code error "Wrong datalen $datalen for Get Session Challenge"
+				    }
+				    binary scan $packet "@21ic16" tempsessid challenge
+				    set ipmi_sess_challenge [binary format "c16" $challenge]
+				    binary scan $ipmi_sess_challenge "H*" challengehex
+				    ::amesterdebug::debug rmcp "cc=$cc tempsessid=[format 0x%08x $tempsessid] challenge=0x$challengehex"
+				    set ipmi_sess_id $tempsessid
+				    
+				    #Send IPMI Active Session command
+				    set ipmi_sess_seq_out 1
+				    set passdata [binary format "c*" {0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0}]
+				    set authcode 4
+				    set data [binary format "cca*i" $authcode $ipmi_priv $passdata $ipmi_sess_seq_out]
+				    set ipmi_authtype 4
+				    set ipmi_authcode {}
+				    #4
+				    
+				    rmcp1.5_send 20 00 00 06 3A $data
+				    
+				}
+				default {
+				    ::amesterdebug::debug rmcp [format "Ignore command 0x%02x" $cmd]
+				}
+			    }
+			}
+			
+			default {
+			    ::amesterdebug::debug rmcp "ignoring netfn=$netfn"
+			}
+		    } 
+		    # end switch netfn
+
+		# end authtype none
+		}
+
+		6 { 
+		    # authtype == RMCP+
+
+		    ::amesterdebug::debug rmcp "got RMCP+ packet"
+
+		    binary scan $packet "@5c" payloadtype
+		    switch -- $payloadtype {
+			17 {
+			    #begin RMCP Open Session Response
+			    binary scan $packet "@17c" statuscode
+			    ::amesterdebug::debug rmcp "packet is RMCP+ Open Session Response with status=$statuscode"
+			    if {$statuscode == 0} {
+				#save session id for RAKP1 packet
+				binary scan $packet "@24i" managed_system_sess_id
+				#send RAKP Message 1
+				::amesterdebug::debug rmcp "Sending RAKP Message 1"
+				rmcp_send [rakp1_packet]
+			    }
+			    #end RMCP Open Session Response
+			}
+			19 {
+			    #begin RAKP2 (response to RAKP1)
+			    binary scan $packet "@16cc" tag statuscode
+			    ::amesterdebug::debug rmcp "packet is RAKP2 with status=$statuscode"
+
+			    if {$statuscode == 0} {
+				#save data from response
+				binary scan $packet "@20ia16a16a*" sess_id managed_system_random managed_system_guid key_exchange_authentication_code
+				#We don't have key exchange authentication code because we use RAKP-none
+				
+				#send RAKP Message 3
+				::amesterdebug::debug rmcp "Sending RAKP Message 3"
+				rmcp_send [rakp3_packet]
+			    }
+			    
+			    #end RAKP2
+			}
+
+			21 {
+			    #begin RAKP4 (response to RAKP3)
+			    binary scan $packet "@16cc" tag statuscode
+			    ::amesterdebug::debug rmcp "packet is RAKP4 with tag=$tag status=$statuscode"
+
+			    if {$statuscode == 0} {
+				#save data from response
+				binary scan $packet "@20i" sess_id 
+				#We don't have key exchange authentication code because we use RAKP-none
+
+				#
+				#
+				#Session is now considered established
+				set rmcp_status "connected"
+				after cancel $rmcp_open_after
+
+				#Set Session Privilege Level (to admin)
+				#  Unauthenticated channels are assumed to be USER, until you set admin.
+				::amesterdebug::debug rmcp "sent set session privilege level (to auth)"
+				set result [ipmi_send_sync 20 00 00 06 3b [binary format "c" 4 ]]
+				set cc [lindex $result 0]
+				if {$cc != 0} {
+				    ::amesterdebug::debug rmcp "IPMI completion code = $cc"
+				    binary scan  [lindex $result 1] "H*" datahex
+				    ::amesterdebug::debug rmcp "databytes = $datahex"
+				    ::amesterdebug::debug rmcp "$this can't set rmcp session to privilege=auth. Closing connection."
+				    rmcp_close
+				} 
+			    }
+				
+			    #end RAKP4
+			}
+
+			0 { 
+			    #unencrypted, unauthenticated IPMI packet
+			    ::amesterdebug::debug rmcp "packet is IPMI response (unencrypted, unauthenticated)"
+			    set tag 0; #whatever it was when enqueued
+			    set databytes {}
+			    set status {}
+
+			    binary scan $packet "@14s" len
+			    binary scan $packet "@22c" status
+			    ::amesterdebug::debug rmcp "len=$len status=$status"
+			    if {$len > 8} {
+				set datalen [expr $len - 8]
+				binary scan $packet "@23a${datalen}" databytes
+			    }
+
+			    if {[info exists inprogress($tag,callback)]} {
+				set callback $inprogress($tag,callback)
+				
+				if {[info exists inprogress($tag,after)]} {
+				    set after $inprogress($tag,after)
+				    after cancel $after
+				    ::amesterdebug::debug local "cancel $after"
+				}
+				
+				::amesterdebug::debug rmcp "$this rmcp_process callback=$callback"
+				if {[catch [list eval $callback] result]} {
+				    ::amesterdebug::debug 1 "ERROR while executing callback= $callback\n  result = $result"
+				}
+				array unset inprogress "$tag,*"
+			    }
+			    
+			    #end IPMI response
+			}
+			
+		    }; #end switch payloadtype
+
+		    #end case authcode==6
+		}
+		
+		default { 
+		    return -code error "Unknown authtype $authtype"
+		}
+		
+	    }
+	    # end switch authtype
+	    
+	    # end class=7
+	}
+	
+	default {
+	    bgerror "UNKNOWN RMCP MESSAGE type=$rmcp(class)"
+	}
+	
+    }
+    # end switch class
+
+    ipmi_dequeue
+}
+
+body rmcp::rmcp_timeout {} {
+    ::amesterdebug::debug health "$this timeout"
+    rmcp_close
+    return
+}
+
+body rmcp::rmcp_close {} {
+    ::amesterdebug::debug rmcp "rmcp_close"
+    set code [catch {close $rmcp_sock}]
+    set ipmi_sess_seq_in 0
+    set ipmi_sess_id 0
+    set rmcp_status "closed"
+    if {$rmcp_sock == 0} {return}
+
+    #Delete timers
+    foreach timer [array names inprogress *,after] {
+	after cancel $inprogress($timer)
+    }
+
+    # remove storage for this sock and repost all callback messages
+    foreach index [array names inprogress *,tag] {
+	#Get message that failed
+	set tag $inprogress($index)
+	set priority $inprogress($tag,priority)
+	set callback $inprogress($tag,callback)
+	set timeout $inprogress($tag,timeout)
+	set rssa $inprogress($tag,rssa)
+	set chan $inprogress($tag,chan)
+	set lun $inprogress($tag,lun)
+	set netfn $inprogress($tag,netfn)
+	set cmd $inprogress($tag,cmd)
+	set data $inprogress($tag,data)
+	#remove message from inprogress array
+	array unset inprogress "$tag,*"
+	#Sending message will also reopen the connection
+	ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority $timeout 0
+    }
+
+    set rmcp_sock 0 
+    
+}
+
+body rmcp::rmcp_open {} {
+    ::amesterdebug::debug rmcp "rmcp_open $this"
+    set result {}
+    if {$rmcp_sock != 0} {return}; #already has a socket
+    if {[catch {set rmcp_sock [udp_open]} result]} {
+	::amesterdebug::debug rmcp "ERROR: while opening $name result=$result"
+	return
+    }
+    fconfigure $rmcp_sock -remote [list $addr $rmcp_port] -buffering none -blocking yes -translation binary
+    ::amesterdebug::debug rmcp [fconfigure $rmcp_sock]
+
+    fileevent $rmcp_sock w {}
+    fileevent $rmcp_sock r [code $this rmcp_process]
+
+    set pingmsg [binary format "ccccIcccc" 6 0 255 6 4542 128 0 0 0]
+    if {[catch {puts -nonewline $rmcp_sock $pingmsg} result]} {
+	return -code error "Cannot send ASF ping"
+    } else {
+	::amesterdebug::debug rmcp "sent ping"
+	set rmcp_status "opening"
+    }
+
+    set rmcp_open_after [after 5000 [code $this rmcp_timeout]]
+
+}
+
+
+body rmcp::ipmi_health {} {
+    ::amesterdebug::debug rmcp "ipmi_health $name $rmcp_status"
+
+    after cancel $ipmi_health_after
+
+    if {$ipmi_health_period} {
+	set ipmi_health_after [after $ipmi_health_period [code $this ipmi_health]]
+    } else {
+	return
+    }
+
+    switch -- $rmcp_status {
+	"disconnected" {
+	    rmcp_open
+	}
+	"opening" {
+	    #::amesterdebug::debug rmcp "bcnet_health $name opening"
+	}
+	"connected" {
+	    ipmi_dequeue
+	}
+	"timeout" {
+	    # disconnect
+	    rmcp_close
+	}
+	"error" {
+	    rmcp_close
+	}
+	"closed" {
+	    # Try to re-open host
+	    rmcp_open
+	}
+	default {
+	    ::amesterdebug::debug rmcp "Error: undefined status $rmcp_status for $name"
+	}
+    }
+
+}
+
+
+body rmcp::rakp1_packet {} {
+    # version=6, reserved=0, seq=255 for IPMI, class=7 for IPMI
+    set rmcphead [binary format "cccc" 6 0 255 7]
+
+    #
+    #make ipmi payload
+    #
+    
+    incr rakp_tag; #any value we desire. 
+    set reserved3 [binary format "ccc" 0 0 0]
+    set remote_cons_random [binary format "iiii" [expr 0x11111111] [expr 0x22222222] [expr 0x33333333] [expr 0x44444444]]
+    set req_max_priv [expr 0x14]; #name-only lookup, request admin level privilege
+    set reserved2 [binary format "s" 0]
+    set usernamebin [binary format "a*" $username] ; #name on managed system we want to assume
+    set usernamelen [string length $username]
+    set ipmipayload [binary format "ca*ia*ca*ca*" $rakp_tag $reserved3 $managed_system_sess_id $remote_cons_random $req_max_priv $reserved2 $usernamelen $usernamebin]
+
+    #
+    #make ipmi session header
+    #
+
+    set authtype 6
+    set payloadtype 18 ;# 12h = RAKP Message 1
+    set sessid [binary format "cccc" 0 0 0 0]
+    set seq [binary format "cccc" 0 0 0 0]
+    set ipmisessionhead [binary format "cca*a*s" $authtype $payloadtype $sessid $seq [string length $ipmipayload]]
+
+    #construct final packet
+    set outmsg [binary format "a*a*a*" $rmcphead $ipmisessionhead $ipmipayload]
+    return $outmsg
+}
+
+body rmcp::rakp3_packet {} {
+    # version=6, reserved=0, seq=255 for IPMI, class=7 for IPMI
+    set rmcphead [binary format "cccc" 6 0 255 7]
+
+    #
+    #make ipmi payload
+    #
+    
+    incr rakp_tag ; #any value we desire. 
+    set status 0
+
+    #Default: no authentication authalg==0
+    set auth_code {}
+
+    #
+    # FIXME: Need work here to complete MD5
+    #
+    if {$authalg == 2} {
+	set key "admin"
+	set text [binary format "a16" $managed_system_random ]
+	#Set Key Exchange Authentication Code
+	set auth_code [::md5::hmac $key $text]
+    }
+    set ipmipayload [binary format "ccsia*" $rakp_tag $status 0 $managed_system_sess_id $auth_code]
+
+    #
+    #make ipmi session header
+    #
+
+    set authtype 6
+    set payloadtype 20 ;# 12h = RAKP Message 3
+    set sessid [binary format "cccc" 0 0 0 0]
+    set seq [binary format "cccc" 0 0 0 0]
+    set ipmisessionhead [binary format "cca*a*s" $authtype $payloadtype $sessid $seq [string length $ipmipayload]]
+
+    #construct final packet
+    set outmsg [binary format "a*a*a*" $rmcphead $ipmisessionhead $ipmipayload]
+    return $outmsg
+}

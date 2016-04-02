@@ -1,0 +1,37 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+class ame_2_21 {
+    inherit ame_2_19
+
+    constructor {parent args} {
+	::ame_2_19::constructor $parent
+    } {
+	::amesterdebug::debug ame "ame_2_21:: constructor for $this parent=$parent"
+	eval configure $args
+
+	#Addtional construction here
+	tb_create
+    }
+
+    destructor {
+	#destructor for items only in this class
+	::amesterdebug::debug destructor "$this destructor"
+	#remove tracebuffer
+	if {$tb ne ""} {delete object $tb}
+	#destructor from base class
+	#ame_2_19::destructor
+    }
+
+    #Trace buffer object
+    protected variable tb {}
+    protected method tb_create {}
+}
+
+body ame_2_21::tb_create {} {
+    if {[catch {set tb [tracebuffer_2_21 ::${name}_tb $this]} result]} {
+	bgerror "$this can't make tracebuffer: $result"
+	return
+    }
+}

@@ -1,0 +1,277 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+# sensor_2_8 describes the sensors found in AME API 2.8
+
+class sensor_2_8 {
+    inherit sensor
+
+    #The ame component to which this sensor belongs
+    public variable amec ""
+    #The host to which this sensor belongs. Cached for convenience.
+    public variable host ""
+
+    #Name of object without "::"
+    public variable objname ""
+    
+    #Sensor data
+    public variable sensorname ""
+    public variable sensornum
+    public variable freq 0 {set g_freq "$freq Hz"}
+    public variable u_value
+    public variable hist 100
+    public variable avg 0
+    public variable scalefactor 0
+    public variable localtime 0
+    public variable timestamp 0
+    public variable timestamp_min 0
+    public variable timestamp_max 0
+    public variable value_acc 0
+    public variable value 0
+    public variable min 0
+    public variable max 0
+    public variable statusreg 0
+    public variable test 0
+    public variable updates 0
+
+    public variable update_period 1000
+    public variable data_after 0
+
+    #Sensor data
+    public method sensor_data {}
+    protected method sensor_data_callback {status databytes}
+    public method blade_new_data {}
+
+    #GUI variables (formatted strings with values and units)
+    protected variable g_value ""
+    protected variable g_value_acc ""
+    protected variable g_min ""
+    protected variable g_max ""
+    protected variable g_avg ""
+    protected variable g_freq ""
+    public method make_gui {}
+    public method make_graph {}
+    protected common sensor_stats_anchor
+    set sensor_stats_anchor(addr) w
+    set sensor_stats_anchor(port) w
+    set sensor_stats_anchor(status) w
+    set sensor_stats_anchor(link) w
+    set sensor_stats_anchor(name) w
+    set sensor_stats_anchor(sensorname) w
+
+    public method get {what args}
+    public method wait {args}
+
+    constructor {parent args} {
+	::amesterdebug::debug blade "constructor for $this"
+	#init name to object name (can be overridden by arg)
+	regsub -all "::" $this "" objname
+	set amec $parent
+	set host [$parent cget -host]
+	eval configure $args
+
+	# Get basic blade info (Number of processors, VPD, etc.)
+	#init
+
+	if {$::options(gui)} {
+	    vector create ::v_value_${objname}
+	    vector create ::v_timestamp_${objname}
+	}
+	
+	#if {$update_budget_after == 0} {update_budget_every_1_second}
+	if {$::options(gui)} {make_gui}
+    }
+
+    destructor {
+	after cancel $data_after
+    }
+
+}
+
+body sensor_2_8::make_gui {} {
+    ::amesterdebug::debug gui "$this make_gui"
+    #Set simple statistics
+    #Generally, this is a list of the sensor instance variables
+    set label_list [list sensorname sensornum u_value hist scalefactor localtime timestamp timestamp_min timestamp_max statusreg test]
+    foreach {key}  $label_list  {
+    	if {![info exists sensor_stats_anchor($key)]} {
+    	    set anchor e
+    	} else {
+    	    set anchor $sensor_stats_anchor($key)
+    	}
+    	$amec sensor_window_add $this $key [label .[$amec cget -name]_sensorwin.s.${objname}_${key} -textvariable [scope $key] -anchor $anchor -font $::fixedfont] $key
+    }
+
+    #Set statistics that are formatted strings
+    foreach {key} {value value_acc min max avg freq} {
+    	if {![info exists sensor_stats_anchor($key)]} {
+    	    set anchor e
+    	} else {
+    	    set anchor $sensor_stats_anchor($key)
+    	}
+    	$amec sensor_window_add $this $key [label .[$amec cget -name]_sensorwin.s.${objname}_${key} -textvariable [scope g_$key] -anchor $anchor -font $::fixedfont] $key
+    }
+
+    #Set elements that are not labels
+    $amec sensor_window_add $this graph [button .[$amec cget -name]_sensorwin.s.${objname}_graph -text Graph -command [code $this make_graph]]
+
+}
+
+body sensor_2_8::make_graph {} {
+    set winname ".graph_${objname}"
+    # if window exists, raise it
+    if {[winfo exists $winname]} {
+	focus $winname
+	raise $winname
+	return
+    }
+
+    toplevel $winname
+    wm title $winname "[$host cget -name] $sensorname graph"
+
+    frame $winname.g
+    stripchart $winname.g.plot -plotbackground white -title $sensorname  -font $::graphtitlefont -plotpadx $::plotpadx -plotpady $::plotpady
+    $winname.g.plot axis configure y -min 0  -title $u_value  -subdivisions 5 -tickfont $::tickfont -titlefont $::axisfont  -loose 1
+    $winname.g.plot axis configure x -title Time -loose 0  -shiftby 100 -tickfont $::tickfont -titlefont $::axisfont
+    global v_value_${objname}
+    global v_timestamp_${objname}
+    $winname.g.plot element create value -color black  -ydata v_value_${objname} -xdata v_timestamp_${objname} -label $sensorname -pixels 0 -linewidth 3
+    $winname.g.plot legend configure -hide 0 -font $::legendfont -padx $::legendpadx -pady $::legendpady -ipadx $::legendipadx -ipady $::legendipady -anchor $::legendanchor
+
+    $winname.g.plot grid on
+    $winname.g.plot marker create line -outline red -under 1 -name high -coords {0 0 0 0} -linewidth 3
+    $winname.g.plot marker create line -outline darkgreen -under 1 -name low -coords {0 0 0 0} -linewidth 3
+    pack $winname.g.plot -side left -expand yes -fill both
+    pack $winname.g -side top -expand yes -fill both
+
+    #Remove since zooming segfaults on some kbskit builds
+    #Rbc_ZoomStack $winname.g.plot
+    Rbc_Crosshairs $winname.g.plot
+    Rbc_ActiveLegend $winname.g.plot
+    Rbc_PrintKey $winname.g.plot
+    Rbc_ClosestPoint $winname.g.plot
+}
+
+
+
+
+# Sensor data
+#
+# This function is its own callback.  (It initiates itself)
+#
+#
+body sensor_2_8::sensor_data_callback { status databytes} {
+    # Record local time of new data
+    set localtime [expr [clock clicks -milliseconds] - $::start_time]
+
+    # Process data
+    set n [binary scan $databytes "IIIISSSSS" timestamp timestamp_min timestamp_max value_acc value min max statusreg test]
+
+    set sf $scalefactor
+    set value_acc [expr $value_acc * $sf]
+    set value [expr $value * $sf]
+    set min [expr $min * $sf]
+    set max [expr $max * $sf]
+    incr updates
+
+    if {[$host isa localhost]} {
+	# Request more data after 1 second. So we don't influence power consumption on localhost too much.
+	set data_after [after $update_period [list $this sensor_data]]
+    } else {
+	sensor_data
+    }
+
+    #After sensor value is updated, evaluate blade_new_data to inform user scripts.
+    #::amesterdebug::debug bc "bc_blade_sensor_data_callback doing callback"
+    catch {blade_new_data} result
+    if {$result ne ""} {
+	::amesterdebug::debug 1 "blade_new_data callback failed: $result"
+	return -code error 
+    }
+    #::amesterdebug::debug bc "bc_blade_sensor_data_callback return from callback"
+
+}
+
+body sensor_2_8::sensor_data {} {
+    ::amesterdebug::debug sensor "bc_blade_sensor_data $this $sensorname"
+    set monitored_list [$amec get monitored]
+
+    # monitor sensor, if it is turned on
+    if {[lsearch -exact $monitored_list $this] != -1} {
+	set callback "[code $this sensor_data_callback] \$status \$databytes"
+	$amec send 3a 3c [binary format "H2c" "06" $sensornum] $callback $::priority_data
+    } else {
+	::amesterdebug::debug bc "No match for $this found in $monitored_list"
+    }
+}
+
+# Important:
+# The input parameters "name" and "sensor" must have those names. User-level callbacks depend on this.
+#
+#
+body sensor_2_8::blade_new_data {} {
+    if {$scalefactor < 1.0} {
+	set fstring "%\#.5g %s"
+    } else {
+	set fstring "%.5g %s"
+    }
+    set g_value [format $fstring $value $u_value]
+    set g_value_acc [format $fstring $value_acc $u_value]
+    set g_max [format $fstring $max $u_value]
+    set g_min [format $fstring $min $u_value]
+
+    if {$::options(gui)} {
+	#update vectors in graph
+	::v_value_${objname} dup v
+	::v_timestamp_${objname} dup t
+	
+	set d [expr [::v_value_${objname} length] - $hist ]
+	if {$d > 0} {
+	    v set [v range $d end]
+	    t set [t range $d end]
+	}
+	v append $value
+	t append $localtime
+
+	# NOTE: setting vectors will update any graphs automatically
+	v dup ::v_value_${objname}
+	t dup ::v_timestamp_${objname}
+    
+	set avg [vector expr mean(v)] 
+	set g_avg "[format "%8.1f" $avg] $u_value"
+    }
+
+    #Update cluster speed information
+    if {$sensorname eq "CPUspd1s"} {
+	if {[winfo exists .cluster_speed.g.plot]} {
+	    $amec host cluster_speed_new_data $this
+	}
+	if {[winfo exists .cluster_cycles.g.plot]} {
+	    $amec cluster_cycles_new_data $this
+	}
+    }
+
+    # Process any user commands on this data
+    if {$::new_data_callback ne ""} {
+	catch {eval $::new_data_callback $this} result
+	if {$result != ""} { 
+	    bgerror "blade_new_data: $result"
+	}
+    }
+
+    return
+}
+
+body sensor_2_8::get {what args} {
+    switch $what {
+	default {return -code error "Invalid arguement for sensor_2_8::get : $what $args"}
+    }
+}
+
+body sensor_2_8::wait {args} {
+    switch $args {
+	value {::vwait [scope updates]}
+	default {::vwait [scope updates]}
+    }
+}

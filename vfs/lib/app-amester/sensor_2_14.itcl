@@ -1,0 +1,1190 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+# sensor_2_14 describes the sensors found in AME API 2.13
+# This is a replacement for the global variable ::sensorinfo()
+
+class sensor_2_14 {
+    inherit sensor
+
+    #The ame component to which this sensor belongs
+    public variable amec ""
+    #The host to which this sensor belongs. Cached for convenience.
+    public variable host ""
+
+    #Name of object without "::"
+    public variable objname ""
+    
+    #Sensor data
+    public variable sensorname "" {
+	if {$::options(gui)} {
+	    #Once name is known, make a menu option to display the histogram
+	    .host.c.f.[$host cget -name]_menu.functions.m.[$amec cget -name].hist add command -label $sensorname -command  [code $this histogram_window]
+	}
+    }
+    public variable sensornum
+    public variable freq 0 {set g_freq "$freq Hz"}
+    public variable u_value
+    #nevine: added max8pt_hist to store the max of the last 8 points history
+    public variable hist 8
+    public variable max8pt_hist 0
+    public variable avg 0
+    public variable scalefactor 0
+    public variable localtime 0
+    public variable timestamp 0
+    public variable timestamp_min 0
+    public variable timestamp_max 0
+    public variable value_acc 0
+    public variable value 0
+    public variable min 0
+    public variable max 0
+    public variable statusreg 0
+    public variable test 0
+    public variable updates 0
+
+    public variable update_period 1000
+    public variable data_after 0
+
+    #init histogram values
+    public variable has_hist 0
+    public variable hist_monitor 0
+    public variable hist_start_value 0
+    public variable hist_bin_range 0
+    public variable hist_num_bins 0
+    public variable hist_bytes_per_bin 2
+    public variable hist_bin_range_scaled 0
+    public variable hist_start_value_scaled 0
+    public variable hist_end_value_scaled 0
+    # hist_low and hist_high are the X-coord of the high/low non-zero values in the histgram
+    public variable hist_low 0
+    public variable hist_high 0
+    # After clause to trigger next event to gather histogram data
+    public variable hist_after 0
+    public variable hist_last_tag ""
+    public variable hist_check_interval 1000
+    public variable hist_snapshot_interval 0
+    # Number of times we have read raw histogram
+    public variable hist_updates 0
+    # Mode of histogram buffer is 0=histogram or 1=timeseries.
+    public variable hist_mode 0
+
+    #nearest point info
+    protected variable nearname ""
+    protected variable nearx ""
+    protected variable neary ""
+    protected variable nearindex ""
+    protected variable neardist ""
+    protected variable nearwidth 9
+    protected method update_nearest {window x y}
+
+    #Sensor data
+    public method sensor_data {}
+    protected method sensor_data_callback {status databytes}
+    public method blade_new_data {}
+
+    public method histogram_set_config {start_value bin_range num_bins bytes_per_bin}
+    public method histogram_set_config_callback {start_value bin_range num_bins bytes_per_bin status databytes}
+    public method histogram_get_config {}
+    public method histogram_get_config_sync {}
+    public method histogram_get_config_callback {status databytes}
+
+    public method histogram_get_mode {}
+    public method histogram_get_mode_sync {}
+    public method histogram_get_mode_callback {status databytes}
+    public method histogram_set_mode {mode}
+    public method histogram_set_mode_callback {mode status databytes}
+
+    public method histogram_set_trigger {}
+    public method histogram_set_trigger_callback {status databytes}
+
+    public method histogram_update {mode start_value bin_range num_bins bytes_per_bin}
+    public method histogram_read {}
+    public method histogram_window_reconfig {}
+    public method histogram_graph_redraw {}
+    public method histogram_graph_update {}
+    public method histogram_graph {}
+    public method histogram_watch {}
+    public method histogram_checkbox_update {}
+    public method histogram_monitor_start {} 
+    public method histogram_monitor_stop {}
+    public method histogram_window {}
+    public method histogram_clear {}
+    public method histogram_arrow {window key}
+
+    #GUI variables (formatted strings with values and units)
+    protected variable g_value ""
+    protected variable g_value_acc ""
+    protected variable g_min ""
+    protected variable g_max ""
+    protected variable g_avg ""
+    protected variable g_freq ""
+    public method make_gui {}
+    public method make_graph {}
+    protected common sensor_stats_anchor
+    set sensor_stats_anchor(addr) w
+    set sensor_stats_anchor(port) w
+    set sensor_stats_anchor(status) w
+    set sensor_stats_anchor(link) w
+    set sensor_stats_anchor(name) w
+    set sensor_stats_anchor(sensorname) w
+
+    public method get {what args}
+    public method wait {args}
+
+    constructor {parent args} {
+	::amesterdebug::debug blade "constructor for $this"
+	#init name to object name (can be overridden by arg)
+	regsub -all "::" $this "" objname
+	set amec $parent
+	set host [$parent cget -host]
+	eval configure $args
+
+	if {$::options(gui)} {
+	    vector create ::v_${objname}_hist
+	    vector create ::v_${objname}_hist_x
+	    vector create ::v_${objname}_hist_graphx
+	    vector create ::v_value_${objname}
+	    vector create ::v_timestamp_${objname}
+	}
+
+	# Get basic blade info (Number of processors, VPD, etc.)
+	#init
+	
+	#if {$update_budget_after == 0} {update_budget_every_1_second}
+	if {$::options(gui)} {make_gui}
+    }
+
+    destructor {
+	after cancel $data_after
+	after cancel $hist_after
+    }
+
+}
+
+body sensor_2_14::make_gui {} {
+    ::amesterdebug::debug gui "$this make_gui"
+    #Set simple statistics
+    #Generally, this is a list of the sensor instance variables
+    set label_list [list sensorname sensornum u_value hist max8pt_hist scalefactor localtime timestamp timestamp_min timestamp_max statusreg test has_hist hist_monitor hist_start_value hist_bin_range hist_num_bins hist_bytes_per_bin hist_bin_range_scaled hist_start_value_scaled hist_end_value_scaled hist_low hist_high hist_last_tag hist_check_interval hist_snapshot_interval hist_updates]
+    foreach {key}  $label_list  {
+    	if {![info exists sensor_stats_anchor($key)]} {
+    	    set anchor e
+    	} else {
+    	    set anchor $sensor_stats_anchor($key)
+    	}
+    	$amec sensor_window_add $this $key [label .[$amec cget -name]_sensorwin.s.${objname}_${key} -textvariable [scope $key] -anchor $anchor -font $::fixedfont] $key
+    }
+
+    #Set statistics that are formatted strings
+    foreach {key} {value value_acc min max avg freq} {
+    	if {![info exists sensor_stats_anchor($key)]} {
+    	    set anchor e
+    	} else {
+    	    set anchor $sensor_stats_anchor($key)
+    	}
+    	$amec sensor_window_add $this $key [label .[$amec cget -name]_sensorwin.s.${objname}_${key} -textvariable [scope g_$key] -anchor $anchor -font $::fixedfont] $key
+    }
+
+    #Set elements that are not labels
+    $amec sensor_window_add $this graph [button .[$amec cget -name]_sensorwin.s.${objname}_graph -text Graph -command [code $this make_graph]]
+
+}
+
+body sensor_2_14::make_graph {} {
+    set winname ".graph_${objname}"
+    # if window exists, raise it
+    if {[winfo exists $winname]} {
+	focus $winname
+	raise $winname
+	return
+    }
+
+    toplevel $winname
+    wm title $winname "[$host cget -name] $sensorname graph"
+
+    frame $winname.g
+    stripchart $winname.g.plot -plotbackground white -title $sensorname  -font $::graphtitlefont -plotpadx $::plotpadx -plotpady $::plotpady
+    $winname.g.plot axis configure y -min 0  -title $u_value  -subdivisions 5 -tickfont $::tickfont -titlefont $::axisfont  -loose 1
+    $winname.g.plot axis configure x -title Time -loose 0  -shiftby 100 -tickfont $::tickfont -titlefont $::axisfont
+    global v_value_${objname}
+    global v_timestamp_${objname}
+    $winname.g.plot element create value -color black  -ydata v_value_${objname} -xdata v_timestamp_${objname} -label $sensorname -pixels 0 -linewidth 3
+    $winname.g.plot legend configure -hide 0 -font $::legendfont -padx $::legendpadx -pady $::legendpady -ipadx $::legendipadx -ipady $::legendipady -anchor $::legendanchor
+
+    $winname.g.plot grid on
+    $winname.g.plot marker create line -outline red -under 1 -name high -coords {0 0 0 0} -linewidth 3
+    $winname.g.plot marker create line -outline darkgreen -under 1 -name low -coords {0 0 0 0} -linewidth 3
+    pack $winname.g.plot -side left -expand yes -fill both
+    pack $winname.g -side top -expand yes -fill both
+
+    #Remove since zooming segfaults on some kbskit builds
+    #Rbc_ZoomStack $winname.g.plot
+    Rbc_Crosshairs $winname.g.plot
+    Rbc_ActiveLegend $winname.g.plot
+    Rbc_PrintKey $winname.g.plot
+    Rbc_ClosestPoint $winname.g.plot
+}
+
+
+
+body sensor_2_14::histogram_set_config {start_value bin_range num_bins bytes_per_bin} {
+    ::amesterdebug::debug histogram "bc_blade_histogram_set_config $this $start_value $bin_range $num_bins $bytes_per_bin"
+    set callback "[code $this histogram_set_config_callback] $start_value $bin_range $num_bins $bytes_per_bin \$status \$databytes"
+    $amec send 3a 3c [binary format "H2cSSSc" "0f" $sensornum $start_value $bin_range $num_bins $bytes_per_bin] $callback $::priority_cmd
+}
+
+body sensor_2_14::histogram_set_config_callback { start_value bin_range num_bins bytes_per_bin status databytes} {
+    ::amesterdebug::debug histogram "bc_blade_histogram_set_config_callback $this $start_value $bin_range $num_bins $bytes_per_bin"
+    
+    if {$status == 0} {
+	#OK
+	::amesterdebug::debug histogram "bc_blade_histogram_set_config PASSED"
+	#Update our copy of blade's histogram parameters
+	histogram_update $hist_mode $start_value $bin_range $num_bins $bytes_per_bin
+	set hist_low 0
+	set hist_high 0
+
+    } else {
+	::amesterdebug::debug histogram "bc_blade_histogram_set_config FAILED with $ipmistatus"
+	#Failed
+    }
+}
+
+
+body sensor_2_14::histogram_get_config {} {
+    ::amesterdebug::debug bc "bc_blade_histogram_get_config $this"
+    set callback "[code $this histogram_get_config_callback] \$status \$databytes"
+    $amec send 3a 3c [binary format "H2c" "0e" $sensornum] $callback $::priority_cmd
+}
+
+body sensor_2_14::histogram_get_config_sync {} {
+    ::amesterdebug::debug bc "bc_blade_histogram_get_config_sync $this $sensorname"
+    #set callback "[code $this histogram_get_config_callback] \$status \$databytes"
+    set result [$amec send_sync 3a 3c [binary format "H2c" "0e" $sensornum]]
+    histogram_get_config_callback [lindex $result 0] [lindex $result 1]
+}
+
+body sensor_2_14::histogram_get_config_callback { status databytes} {
+    set n [binary scan $databytes "SSSc" start_value bin_range num_bins bytes_per_bin]
+    histogram_update $hist_mode $start_value $bin_range $num_bins $bytes_per_bin
+}
+
+body sensor_2_14::histogram_get_mode {} {
+    ::amesterdebug::debug bc "bc_blade_histogram_get_mode $this"
+    set callback "[code $this histogram_get_mode_callback] \$status \$databytes"
+    $amec send 3a 3b [binary format "H*c" "0811" $sensornum] $callback $::priority_cmd
+}
+
+body sensor_2_14::histogram_get_mode_sync {} {
+    ::amesterdebug::debug bc "bc_blade_histogram_get_mode_sync $this $sensorname"
+    set result [$amec send_sync 3a 3b [binary format "H*c" "0811" $sensornum]]
+    histogram_get_mode_callback [lindex $result 0] [lindex $result 1]
+}
+
+body sensor_2_14::histogram_get_mode_callback {status databytes} {
+    ::amesterdebug::debug histogram "histogram_get_mode_callback $this"
+    binary scan $databytes "H*" all
+    ::amesterdebug::debug histogram "databytes = $all"
+    set n [binary scan $databytes "c" mode]
+    ::amesterdebug::debug histogram "got mode=$mode"
+    histogram_update $mode $hist_start_value $hist_bin_range $hist_num_bins $hist_bytes_per_bin
+}
+
+body sensor_2_14::histogram_set_mode {mode} {
+    ::amesterdebug::debug histogram "bc_blade_histogram_set_mode $this $mode"
+    set callback "[code $this histogram_set_mode_callback] $mode \$status \$databytes"
+    $amec send 3a 3b [binary format "H*cc" "0711" $sensornum $mode] $callback $::priority_cmd
+}
+
+body sensor_2_14::histogram_set_mode_callback {mode status databytes} {
+    ::amesterdebug::debug histogram "bc_blade_histogram_set_mode_callback $this $mode"
+    
+    if {$status == 0} {
+	#OK
+	::amesterdebug::debug histogram "bc_blade_histogram_set_mode PASSED"
+	#Update our copy of blade's histogram parameters
+	histogram_update $mode $hist_start_value $hist_bin_range $hist_num_bins $hist_bytes_per_bin
+	set hist_low 0
+	set hist_high 0
+    } else {
+	::amesterdebug::debug histogram "bc_blade_histogram_set_mode FAILED with ipmistatus=$status"
+	#Failed
+    }
+}
+
+body sensor_2_14::histogram_set_trigger {} {
+    ::amesterdebug::debug histogram "bc_blade_histogram_set_trigger $this"
+    set callback "[code $this histogram_set_trigger_callback] \$status \$databytes"
+    $amec send 3a 3b [binary format "H*c" "0712" $sensornum] $callback $::priority_cmd
+}
+
+body sensor_2_14::histogram_set_trigger_callback {status databytes} {
+    ::amesterdebug::debug histogram "bc_blade_histogram_set_trigger_callback $this"    
+    if {$status == 0} {
+	#OK
+	::amesterdebug::debug histogram "bc_blade_histogram_set_trigger PASSED"
+    } else {
+	#Failed
+	::amesterdebug::debug histogram "bc_blade_histogram_set_trigger FAILED with ipmistatus=$status"
+    }
+}
+
+
+body sensor_2_14::histogram_update { mode start_value bin_range num_bins bytes_per_bin} {
+    ::amesterdebug::debug histogram "bc_blade_histogram_update $this $sensorname"
+    ::amesterdebug::debug histogram "sensor=$sensorname"
+    ::amesterdebug::debug histogram "mode=$mode"
+    ::amesterdebug::debug histogram "start_value=$start_value"
+    ::amesterdebug::debug histogram "bin_range=$bin_range"
+    ::amesterdebug::debug histogram "num_bins=$num_bins"
+    ::amesterdebug::debug histogram "bytes_per_bin=$bytes_per_bin"
+    set redraw 0
+    if {$hist_mode ne $mode} {
+	set redraw 1
+    }
+    set hist_mode $mode
+    set hist_start_value $start_value
+    set hist_bin_range $bin_range
+    set hist_num_bins $num_bins
+    set hist_bytes_per_bin $bytes_per_bin
+
+    if {$num_bins > 0} {
+	::amesterdebug::debug histogram "has hist"
+	set has_hist 1
+    } else {
+	::amesterdebug::debug histogram "has no hist"
+    }
+    switch $hist_mode {
+	0 {
+	    #histogram mode
+
+	    set hist_bin_range_scaled [expr $scalefactor * $hist_bin_range]
+	    set hist_start_value_scaled [expr $scalefactor * $hist_start_value]
+	    set hist_end_value_scaled [expr $hist_bin_range_scaled * $num_bins + $hist_start_value_scaled ]
+
+	    #Make x-axis for plotting histogram
+	    # Add half of bin size to start_value because bars are centered over the x value
+	    
+	    set start [expr $hist_start_value_scaled - $hist_bin_range_scaled + $hist_bin_range_scaled/2.0]
+	    set end [expr $start + ($hist_num_bins+1)*$hist_bin_range_scaled + $hist_bin_range_scaled/2.0] 
+	    
+	    set startgraph [expr $hist_start_value_scaled - $hist_bin_range_scaled]
+	    set endgraph [expr $start + ($hist_num_bins+1)*$hist_bin_range_scaled] 
+	    
+	    set step $hist_bin_range_scaled
+	    ::amesterdebug::debug histogram "start=$start end=$end step=$step"
+	    ::v_${objname}_hist_x seq  $start $end $step
+	    
+	    # graphx is the x axis shown in the GUI graph. Returned to user
+	    # with "get histogram bins" command
+	    ::v_${objname}_hist_graphx seq $startgraph $endgraph $step
+	    
+	}
+	
+	1 {
+	    #timeseries mode
+	    if {$freq == 0} {
+		set range 1
+	    } else {
+		set range [expr 1/$freq]
+	    }
+	    set hist_bin_range_scaled [expr $range]
+	    set hist_start_value_scaled 0
+	    set hist_end_value_scaled [expr $hist_bin_range_scaled * $hist_num_bins + $hist_start_value_scaled ]
+
+	    #Make x-axis for plotting histogram
+	    # Add half of bin size to start_value because bars are centered over the x value
+	    
+	    set start [expr $hist_start_value_scaled]
+	    set end [expr $start + ($hist_num_bins+2-1)*$hist_bin_range_scaled] 
+	    
+	    set step $hist_bin_range_scaled
+	    ::amesterdebug::debug histogram "start=$start end=$end step=$step"
+	    ::v_${objname}_hist_x seq  $start $end $step
+	    
+	    # graphx is the x axis shown in the GUI graph. Returned to user
+	    # with "get histogram bins" command
+	    ::v_${objname}_hist_graphx seq $start $end $step
+	    
+	}
+    }
+
+    
+    #Create and zero all histogram vectors
+    histogram_clear
+
+    #Update histogram window (if it exists) in case anything changed.
+    if {$redraw} {
+	histogram_graph_redraw
+    } else {
+	histogram_graph_update
+    }
+}
+
+#--------------------------------------------------------------------
+#
+# AME Histogram (maintained by BMC)
+#
+#--------------------------------------------------------------------
+
+# ::blade(name,histogram)
+#
+# histogram is a list of raw histogram lists. Each item is from a previous measurement of the histogram.
+#  The raw histogram list is a copy of the bytes in the BMC histogram without interpretation.
+#  It is divided in to a list for each histogram.
+
+body sensor_2_14::histogram_read {} {
+    
+    ::amesterdebug::debug histogram "histogram_read $this"
+
+    if {$has_hist == 0} {
+	# no histogram for this sensor
+	return
+    }
+
+    # IPMI commands to get data
+    #
+    #
+    set numbytes 24
+    set offset 0
+    set numbin [expr 2 + $hist_num_bins]
+
+    # Read the whole histogram into a byte list
+    set start 0
+    set len [expr $hist_bytes_per_bin * $numbin]
+    set histogrambytes {}
+    set oldtag ""
+    set msgnum 0
+    set tag unknown
+    while {$len > 0} {
+	incr msgnum
+	::amesterdebug::debug histogram "hist_update sensor=$sensorname message $msgnum"
+	#::amesterdebug::debug histogram "reading offset=$offset len=$numbytes"
+	set result [$amec send_sync 3a 3c [binary format "H*cSS" "10" $sensornum $offset $numbytes] $::priority_cmd]
+	#set status [lindex $result 0]
+	#::amesterdebug::debug histogram "hist_update sensor=$sensorname bc status = $status"
+	#binary scan [lindex $result 1] "H*" all
+	#::amesterdebug::debug histogram "hist_update sensor=$sensorname ipmi msg = $all"
+	binary scan [lindex $result 1] "SSH*" tag size chars
+	#puts "tag=$tag size=$size chars=$chars"
+	if {$tag == $hist_last_tag} {
+	    #snapshot has not changed
+	    ::amesterdebug::debug histogram "hist_update sensor=$sensorname snapshot has not changed"
+	    return
+	}
+	if {$oldtag != $tag && $oldtag ne ""} {
+	    ::amesterdebug::debug histogram "hist_update sensor=$sensorname tag does not match"
+	    #start again
+	    return [histogram_read]
+	}
+	append histogrambytes $chars
+	::amesterdebug::debug histogram "hist_update sensor=$sensorname got tag=$tag size=$size"
+	set len [expr $len - $size]
+	incr offset $size
+	if {$len < 24} {set numbytes $len}
+	set oldtag $tag
+    }
+    set hist_last_tag $tag
+    
+    set bytes [binary format "H*" $histogrambytes]
+    #binary scan $bytes "H20" firstten
+    ::amesterdebug::debug histogram "hist_update sensor=$sensorname bytes = $histogrambytes"
+    #::amesterdebug::debug histogram "first 10 = $firstten"
+
+    #pull out data for each histogram
+    switch $hist_bytes_per_bin {
+	1 {
+	    set type "c"
+	    set mask "0x0ff"
+	}
+	2 {
+	    set type "S"
+	    set mask "0x0ffff"
+	}
+	4 {
+	    set type "I"
+	    set mask "0x0ffffffff"
+	}
+	8 {
+	    set type "W"
+	    set mask "0xffffffffffffffff"
+	}
+	default {
+	    ::amesterdebug::debug 1 "ERROR: histogram for $this cannot be read. hist_bytes_per_bin is $hist_bytes_per_bin"
+	    return 
+	}
+    }
+    binary scan $bytes "${type}$numbin" values
+    
+    set unsigned {}
+    foreach v $values {
+	#set x [expr $v & $mask]
+	set x $v
+	lappend unsigned $x
+    }
+    #::amesterdebug::debug histogram "hist_update sensor=$sensorname values = $values"
+    ::amesterdebug::debug histogram "hist_update sensor=$sensorname unsigned = $unsigned"
+    
+    v_${objname}_raw set $values
+    set tmp ::v_${objname}_raw
+    ::amesterdebug::debug histogram "hist_update sensor=$sensorname raw = "
+    eval ::amesterdebug::debug histogram "$$tmp\(:)"
+    
+    #update the difference vector
+    if {$hist_updates} {
+	if {$hist_mode == 0 } {
+	    if {[catch {
+		::v_${objname}_diff expr [list ::v_${objname}_raw - ::v_${objname}_raw_old] 
+	    } result] } {
+		::amesterdebug::debug 1 "ERROR subtracting vectors"
+		set tmp [::v_${objname}_raw length]
+		::amesterdebug::debug 1 "length raw_$sensorname =  $tmp"
+		set tmp [::v_${objname}_raw_old length]
+		::amesterdebug::debug 1 "length raw_old =  $tmp"
+	    }
+	    
+	    #Mask each element to the appropriate size
+	    
+	    set tmp ::v_${objname}_diff
+	    #::amesterdebug::debug histogram "diff before= "
+	    #eval ::amesterdebug::debug histogram "$$tmp\(:)"
+	    if {$hist_bytes_per_bin != 8} {
+		set l [::v_${objname}_hist length]
+		for {set i 0} {$i < $l} {incr i} {
+		    set ::v_${objname}_diff($i) [expr wide([eval list $$tmp\($i\)]) & $mask]
+		}
+	    }
+	    ::amesterdebug::debug histogram "hist_update sensor=$sensorname diff after= "
+	    eval ::amesterdebug::debug histogram "$$tmp\(:)"
+	    
+	    ::v_${objname}_hist expr [list ::v_${objname}_diff + ::v_${objname}_hist_old]
+	} else {
+	    #timeseries
+
+	    set tmp ::v_${objname}_raw
+	    #::amesterdebug::debug histogram "diff before= "
+	    #eval ::amesterdebug::debug histogram "$$tmp\(:)"
+	    if {$hist_bytes_per_bin != 8} {
+		set l [::v_${objname}_hist length]
+		for {set i 0} {$i < $l} {incr i} {
+		    set ::v_${objname}_hist($i) [expr (wide([eval list $$tmp\($i\)]) & $mask) * $scalefactor]
+		}
+	    }
+	    ::amesterdebug::debug histogram "hist_update sensor=$sensorname after= "
+	    eval ::amesterdebug::debug histogram "$$tmp\(:)"
+	    
+	}
+	
+    }
+    
+    #save old values
+    ::v_${objname}_hist_old set ::v_${objname}_hist
+    ::v_${objname}_raw_old set ::v_${objname}_raw
+
+    ::v_${objname}_hist_exists expr [list ( ::v_${objname}_hist != 0 )]
+
+    set l [::v_${objname}_hist_x length]
+    set xlow [expr 0x0ffffffff]
+    set xhigh 0
+    for {set i 0} {$i < $l} {incr i} {
+	if {[::v_${objname}_hist_exists range $i $i] == 0.0} {continue}
+	set t [::v_${objname}_hist_graphx range $i $i] 
+	if {$t > $xhigh} {set xhigh $t}
+	if {$t < $xlow} {set xlow $t}
+    }
+#    if {$xlow <= $xhigh} {
+#	set hist_low [expr $xlow - $hist_bin_range_scaled/2.0]
+#	set hist_high [expr $xhigh - $hist_bin_range_scaled/2.0]
+#	
+#    }
+    set hist_low $xlow
+    set hist_high $xhigh
+    
+    set tmp ::v_${objname}_hist_exists
+    ::amesterdebug::debug histogram "EXISTS "
+    eval ::amesterdebug::debug histogram "$$tmp\(:)"
+	
+    incr hist_updates
+
+    return
+
+}
+
+
+# Commands to run after update button is pressed.
+# a) send IPMI command to blade
+# b) reset internal variables for graphing results
+# c) start processing updates if the sensor is enabled
+body sensor_2_14::histogram_window_reconfig {} {
+    ::amesterdebug::debug histogramgraph "histogram_window_reconfig()"
+    ::amesterdebug::debug histogramgraph "- has_hist $has_hist"
+    ::amesterdebug::debug histogramgraph "- monitor $hist_monitor"
+    ::amesterdebug::debug histogramgraph "- start value $hist_start_value"
+    ::amesterdebug::debug histogramgraph "- bin range $hist_bin_range"
+    ::amesterdebug::debug histogramgraph "- num bins $hist_num_bins"
+    ::amesterdebug::debug histogramgraph "- bytes per bin $hist_bytes_per_bin"
+    ::amesterdebug::debug histogramgraph "- bin range scaled $hist_bin_range_scaled"
+    ::amesterdebug::debug histogramgraph "- start value scaled $hist_start_value_scaled"
+    ::amesterdebug::debug histogramgraph "- hist end value scaled $hist_end_value_scaled"
+    #Save selected options, in case they change as side-effects of procedures below.
+    set save_mode $::histcontrol($objname,$sensorname,mode)
+    set save_start $::histcontrol($objname,$sensorname,start_value)
+    set save_range $::histcontrol($objname,$sensorname,bin_range)
+    set save_bins $::histcontrol($objname,$sensorname,num_bins)
+    set save_bytes $::histcontrol($objname,$sensorname,bytes_per_bin)
+
+    #Check what needs to change
+    if {$::histcontrol($objname,$sensorname,start_value) != $hist_start_value
+	|| $::histcontrol($objname,$sensorname,bin_range) != $hist_bin_range
+	|| $::histcontrol($objname,$sensorname,num_bins) != $hist_num_bins
+	|| $::histcontrol($objname,$sensorname,bytes_per_bin) != $hist_bytes_per_bin  } {
+	histogram_set_config $::histcontrol($objname,$sensorname,start_value) $::histcontrol($objname,$sensorname,bin_range) $::histcontrol($objname,$sensorname,num_bins) $::histcontrol($objname,$sensorname,bytes_per_bin) 
+    } 
+    if {$::histcontrol($objname,$sensorname,mode) != $hist_mode} {
+	histogram_set_mode $::histcontrol($objname,$sensorname,mode)
+    }
+}
+
+body sensor_2_14::histogram_graph_redraw {} {
+    ::amesterdebug::debug histogramgraph "histogram_graph_redraw()"
+    ::amesterdebug::debug histogramgraph "- has_hist $has_hist"
+    ::amesterdebug::debug histogramgraph "- monitor $hist_monitor"
+    ::amesterdebug::debug histogramgraph "- start value $hist_start_value"
+    ::amesterdebug::debug histogramgraph "- bin range $hist_bin_range"
+    ::amesterdebug::debug histogramgraph "- num bins $hist_num_bins"
+    ::amesterdebug::debug histogramgraph "- bytes per bin $hist_bytes_per_bin"
+    ::amesterdebug::debug histogramgraph "- bin range scaled $hist_bin_range_scaled"
+    ::amesterdebug::debug histogramgraph "- start value scaled $hist_start_value_scaled"
+    ::amesterdebug::debug histogramgraph "- hist end value scaled $hist_end_value_scaled"
+    set winname .histograph_${objname}_${sensornum}
+    if {[winfo exists $winname]} {
+	destroy $winname
+	histogram_graph
+    }
+}
+
+# This is called whenever a histogram configuration changes. It re-draws the axis, bar widths, etc.
+body sensor_2_14::histogram_graph_update {} {
+    ::amesterdebug::debug histogramgraph "histogram_update()"
+    ::amesterdebug::debug histogramgraph "- has_hist $has_hist"
+    ::amesterdebug::debug histogramgraph "- monitor $hist_monitor"
+    ::amesterdebug::debug histogramgraph "- start value $hist_start_value"
+    ::amesterdebug::debug histogramgraph "- bin range $hist_bin_range"
+    ::amesterdebug::debug histogramgraph "- num bins $hist_num_bins"
+    ::amesterdebug::debug histogramgraph "- bytes per bin [scope hist_bytes_per_bin]"
+    ::amesterdebug::debug histogramgraph "- bin range scaled $hist_bin_range_scaled"
+    ::amesterdebug::debug histogramgraph "- start value scaled $hist_start_value_scaled"
+    ::amesterdebug::debug histogramgraph "- hist end value scaled $hist_end_value_scaled"
+    set winname .histograph_${objname}_${sensornum}
+    if {[winfo exists $winname]} {
+	# fix stepsize in case it changed
+	#$winname.g.plot axis configure x -stepsize $hist_bin_range_scaled 
+	if {$hist_mode == 0} {
+	    $winname.g.plot element configure ${objname}_${sensorname} -barwidth $hist_bin_range_scaled
+	}
+	return
+    }    
+}
+
+body sensor_2_14::histogram_graph {} {
+    ::amesterdebug::debug histogramgraph "histogram_graph()"
+    ::amesterdebug::debug histogramgraph "- has_hist $has_hist"
+    ::amesterdebug::debug histogramgraph "- monitor $hist_monitor"
+    ::amesterdebug::debug histogramgraph "- start value $hist_start_value"
+    ::amesterdebug::debug histogramgraph "- bin range $hist_bin_range"
+    ::amesterdebug::debug histogramgraph "- num bins $hist_num_bins"
+    ::amesterdebug::debug histogramgraph "- bytes per bin $hist_bytes_per_bin"
+    ::amesterdebug::debug histogramgraph "- bin range scaled $hist_bin_range_scaled"
+    ::amesterdebug::debug histogramgraph "- start value scaled $hist_start_value_scaled"
+    ::amesterdebug::debug histogramgraph "- hist end value scaled $hist_end_value_scaled"
+
+    # window
+    set winname .histograph_${objname}_${sensornum}
+
+    if {[winfo exists $winname]} {
+	focus $winname
+	raise $winname
+	return
+    }
+
+    toplevel $winname
+    wm title $winname "$sensorname histogram for $host"
+    frame $winname.g
+
+    #Begin monitoring immediately if appropriate
+    if {$has_hist != 0 && $hist_monitor == 0} {
+	histogram_monitor_start
+    }
+
+    switch $hist_mode {
+	0 {
+	    #histogram
+	    barchart $winname.g.plot -plotbackground white -title "Histogram of $sensorname on $host" -barwidth 1  -font $::graphtitlefont -plotpadx $::plotpadx -plotpady $::plotpady
+	    $winname.g.plot axis configure y -title "Count" -min 0 -tickfont $::tickfont -titlefont $::axisfont
+	    $winname.g.plot axis configure x -title $u_value -rotate 90 -tickfont $::tickfont -titlefont $::axisfont -stepsize 0
+	    #-stepsize [expr $hist_bin_range_scaled *5] 
+	} 
+	1  {
+	    #timeseries
+	    graph $winname.g.plot -plotbackground white -title "Timeseries of $sensorname on $host"  -font $::graphtitlefont -plotpadx $::plotpadx -plotpady $::plotpady
+	    $winname.g.plot axis configure y -title $u_value -tickfont $::tickfont -titlefont $::axisfont -subdivisions 5 -loose 1
+	    $winname.g.plot axis configure x -title "Time (ms)" -rotate 90 -tickfont $::tickfont -titlefont $::axisfont
+	}
+	default {
+	    return -code error "histogram: unknown hist_mode $hist_mode"
+	}
+    }
+    
+    $winname.g.plot element create ${objname}_${sensorname}  -ydata ::v_${objname}_hist -xdata ::v_${objname}_hist_x -label $objname 
+    switch $hist_mode {
+	0 {
+	    $winname.g.plot element configure ${objname}_${sensorname} -barwidth $hist_bin_range_scaled
+	}
+	1 {
+	    $winname.g.plot element configure ${objname}_${sensorname} -linewidth 3 -pixels 0
+	}
+	default {
+	    return -code error "histogram_graph: unknown mode $hist_mode"
+	}
+    }
+    $winname.g.plot legend configure -hide 1 -font $::legendfont -padx $::legendpadx -pady $::legendpady -ipadx $::legendipadx -ipady $::legendipady -anchor $::legendanchor
+
+    $winname.g.plot element show [list ${objname}_${sensorname} ${objname}_${sensorname}_exists]
+
+    $winname.g.plot grid on
+
+    pack $winname.g.plot -side left -expand yes -fill both
+    pack $winname.g -side top -expand yes -fill both
+
+
+
+    # make nearest point
+    frame $winname.n -background white
+    label $winname.n.title -text "Nearest point" -anchor w -font $::fixedfontbold -width $nearwidth
+    label $winname.n.lname -text "trace:" -anchor e -font $::fixedfontbold
+    label $winname.n.lx -text "x:" -anchor e -font $::fixedfontbold
+    label $winname.n.ly -text "y:" -anchor e -font $::fixedfontbold
+    label $winname.n.lindex -text "index:" -anchor e -font $::fixedfontbold
+    label $winname.n.ldist -text "dist:" -anchor e -font $::fixedfontbold
+
+    label $winname.n.name -textvariable [scope nearname] -anchor w -font $::fixedfont -width $nearwidth
+    label $winname.n.x -textvariable [scope nearx] -anchor w -font $::fixedfont -width $nearwidth
+    label $winname.n.y -textvariable [scope neary] -anchor w -font $::fixedfont -width $nearwidth
+    label $winname.n.index -textvariable [scope nearindex] -anchor w -font $::fixedfont -width $nearwidth
+    label $winname.n.dist -textvariable [scope neardist] -anchor w -font $::fixedfont -width $nearwidth
+
+    #pack $winname.n.title $winname.n.lname $winname.n.name $winname.n.lx $winname.n.x $winname.n.ly $winname.n.y $winname.n.lindex $winname.n.index -side left -expand yes -fill x
+    pack $winname.n.lx $winname.n.x $winname.n.ly $winname.n.y $winname.n.lindex $winname.n.index -side left -expand yes -fill x
+
+
+    pack $winname.n -side top -fill x
+
+    frame $winname.sep -background black -height 2
+    pack $winname.sep -side top -fill x
+    
+
+    #Remove since zooming segfaults on some kbskit builds
+    #Rbc_ZoomStack $winname.g.plot
+    Rbc_Crosshairs $winname.g.plot
+    Rbc_ActiveLegend $winname.g.plot
+    Rbc_PrintKey $winname.g.plot
+    Rbc_ClosestPoint $winname.g.plot
+
+    # Make x,y,index elements update
+    $winname.g.plot element bind all <Motion> [code $this update_nearest %W %x %y]
+    
+    # Trigger on arrow keys
+    bind $winname.g.plot <Left> [code $this histogram_arrow %W %K]
+    bind $winname.g.plot <Right> [code $this histogram_arrow %W %K]
+    bind $winname.g.plot <Button> {focus %W}
+
+    set f ${winname}.param
+    frame $f
+    
+    #::histcontrol holds temporary values until user sets them
+    set ::histcontrol($objname,$sensorname,mode) $hist_mode
+    set ::histcontrol($objname,$sensorname,start_value) $hist_start_value
+    set ::histcontrol($objname,$sensorname,bin_range) $hist_bin_range
+    set ::histcontrol($objname,$sensorname,num_bins) $hist_num_bins
+    # bytes_per_bin is set below. Must be after the control since it limits the range of input to legal values.
+    set ::histcontrol($objname,$sensorname,bin_range_scaled) $hist_bin_range_scaled
+    set ::histcontrol($objname,$sensorname,start_value_scaled) $hist_start_value_scaled
+    set ::histcontrol($objname,$sensorname,end_value_scaled) $hist_end_value_scaled
+    label $f.model -text "mode:" -anchor w
+    label $f.startvaluel -text "start value:" -anchor w
+    label $f.binrangel -text "bin range:" -anchor w
+    label $f.numbinsl -text "bins:" -anchor w
+    label $f.bytesl -text "bytes per bin:" -anchor w
+    label $f.rangescaledl -text "bin range scaled:" -anchor w
+    label $f.startscaledl -text "start value scaled:" -anchor w
+    label $f.endscaledl -text "end value scaled:" -anchor w
+    label $f.lowl -text "lowest value bin:" -anchor w
+    label $f.highl -text "highest value bin:" -anchor w
+
+    radiobutton $f.modehist -text "histogram" -relief flat -variable ::histcontrol($objname,$sensorname,mode) -value 0
+    radiobutton $f.modetime -text "timeseries" -relief flat -variable ::histcontrol($objname,$sensorname,mode) -value 1
+    if {$::histcontrol($objname,$sensorname,mode) eq 0} {
+	label $f.modecurrent -text "histogram"
+    } else {
+	label $f.modecurrent -text "timeseries"
+    }        
+
+    spinbox $f.startvaluen -textvariable ::histcontrol($objname,$sensorname,start_value) -width 6 -from 0 -to 65535 -increment 1 -justify right 
+    spinbox $f.binrangen -textvariable ::histcontrol($objname,$sensorname,bin_range) -width 6 -from 0 -to 65535 -increment 1 -justify right 
+    spinbox $f.numbinsn -textvariable ::histcontrol($objname,$sensorname,num_bins) -width 6 -from 0 -to 65535 -increment 1 -justify right 
+    spinbox $f.bytesn -textvariable ::histcontrol($objname,$sensorname,bytes_per_bin) -width 6 -values [list 1 2 4] -justify right 
+    set ::histcontrol($objname,$sensorname,bytes_per_bin) $hist_bytes_per_bin
+    if {$::histcontrol($objname,$sensorname,bytes_per_bin) == 0} {
+	set ::histcontrol($objname,$sensorname,bytes_per_bin) 2
+    }
+
+
+    label $f.startvalue -textvariable [scope hist_start_value] -justify right -anchor e -width 8
+    label $f.binrange -textvariable [scope hist_bin_range] -justify right -anchor e -width 8
+    label $f.numbins -textvariable [scope hist_num_bins] -justify right -anchor e -width 8
+    label $f.bytes -textvariable [scope hist_bytes_per_bin] -justify right -anchor e -width 8
+    label $f.rangescaled -textvariable [scope hist_bin_range_scaled] -justify right -anchor e -width 8
+    label $f.startscaled -textvariable [scope hist_start_value_scaled] -justify right -anchor e -width 8
+    label $f.endscaled -textvariable [scope hist_end_value_scaled] -justify right -anchor e -width 8
+
+    label $f.low -textvariable [scope hist_low] -justify right -anchor e -width 8
+    label $f.high -textvariable [scope hist_high] -justify right -anchor e -width 8
+
+    label $f.parameter -text "Parameters" -anchor w
+    label $f.current -text "Current" -anchor w
+    label $f.new -text "New" -anchor w
+
+    #
+    # Call IPMI command to reconfig histogram or enable it
+    # 
+
+    
+
+    button $f.updatebutton -text "Update" -command [code $this histogram_window_reconfig] -background lightblue
+
+    button $f.triggerbutton -text "Trigger timeseries" -command [code $this histogram_set_trigger] -background lightblue
+
+    frame $f.sep1 -bg black -height 2
+
+    checkbutton $f.monitor -text "Amester reads histogram data (Must set to begin showing data.)" -variable [scope hist_monitor] -command [code $this histogram_checkbox_update]
+
+    button $f.clear -text "Clear Amester-side histogram" -command [code $this histogram_clear] -background lightblue
+    label $f.histenable -text "Note: use Options window to enable BMC-side histogram"
+
+    grid $f.parameter $f.current $f.new -sticky w
+    grid $f.model $f.modecurrent $f.modehist -sticky w
+    grid $f.modetime -column 2 -sticky w
+    grid $f.startvaluel $f.startvalue $f.startvaluen -sticky w
+    grid $f.binrangel $f.binrange $f.binrangen -sticky w
+    grid $f.numbinsl $f.numbins $f.numbinsn -sticky w
+    grid $f.bytesl $f.bytes $f.bytesn -sticky w
+    grid $f.updatebutton -column 2  -sticky news
+    if {$hist_mode == 1} {
+	grid $f.triggerbutton -column 2 -sticky news
+    }
+    grid $f.startscaledl $f.startscaled -sticky w
+    grid $f.endscaledl $f.endscaled -sticky w
+    grid $f.rangescaledl $f.rangescaled -sticky w
+    grid $f.lowl $f.low -sticky w
+    grid $f.highl $f.high -sticky w
+
+    grid $f.sep1 -columnspan 3 -sticky news
+    grid $f.monitor -columnspan 3 -sticky w
+    grid $f.clear -columnspan 3 -sticky w
+    grid $f.histenable -columnspan 3 -sticky w
+
+    pack $f -side bottom -anchor w
+
+}
+
+
+body sensor_2_14::histogram_arrow {window key} {
+    # set bounds for index of graphed vector
+    set min 0
+    set max [expr [::v_${objname}_hist_x length] - 1]
+
+    # if graph doesn't exist, return
+    if {$max <= 0} return
+	
+    if {$key eq "Right"} {
+	if {$nearindex eq ""} {
+	    # if we are not near a point, start at graph edge
+	    set nearindex $min
+	} else {
+	    incr nearindex 1
+	    if {$nearindex > $max} {set nearindex $min}
+	}
+    } elseif {$key eq "Left"} {
+	if {$nearindex eq ""} {
+	    # if we are not near a point, start at graph edge
+	    set nearindex $max
+	} else {
+	    incr nearindex -1
+	    if {$nearindex < $min} {set nearindex $max}
+	}
+    }
+
+    set graphx [::v_${objname}_hist_x range $nearindex $nearindex]
+    set graphy [::v_${objname}_hist range $nearindex $nearindex]
+    
+    set w .histograph_${objname}_${sensornum}.g.plot
+    set winxy [$w transform $graphx $graphy]
+
+    event generate $w <Motion> -x [lindex $winxy 0] -y [lindex $winxy 1]
+    
+}
+
+
+body sensor_2_14::update_nearest {window x y} {
+    #Find out which trace mouse is near
+    $window element closest $x $y valuearray
+    
+    #Store the info
+    if {$valuearray(name) eq ""} {
+	set nearname ""
+	set nearx ""
+	set neary ""
+	set nearindex ""
+	set neardist ""
+    } else {
+	set nearname [format "%-9s" $valuearray(name)]
+	if {[string length $valuearray(x)] <= 9} {
+	    set nearx $valuearray(x)
+	} else {
+	    set nearx [format "%-9.5g" $valuearray(x)]
+	}
+	if {[string length $valuearray(y)] <= 9} {
+	    set neary $valuearray(y)
+	} else {
+	    set neary [format "%-9g" $valuearray(y)]
+	}
+	set nearindex [format "%-9i" $valuearray(index)]
+	set neardist [format "%-9.3f" $valuearray(dist)]
+    }
+}
+
+
+
+# histogram_watch
+# Amester internal routine
+# 
+# Used to periodically gather AME histogram data
+body sensor_2_14::histogram_watch {} {
+    # Cancel any pending after (user may have called again, while there is a pending after)
+    # This ensures there is only 1 outstanding after command at a time.
+    after cancel $hist_after
+    # Get the histogram data
+    histogram_read
+    # If histogram is being monitored, then run again after a delay
+    if {$hist_monitor} {
+	set hist_after [after $hist_check_interval [code $this histogram_watch]]
+    }
+}
+
+body sensor_2_14::histogram_checkbox_update {} {
+    if {$hist_monitor} {
+	histogram_monitor_start
+    } else {
+	histogram_monitor_stop
+    }
+}
+
+# histogram_monitor_start
+# Amester API
+#
+# Signal start of gathering histogram data for a sensor
+body sensor_2_14::histogram_monitor_start {} {
+    set hist_monitor 1
+    histogram_watch
+}
+
+# histogram_monitor_stop
+# Amester API
+#
+# Signal end of gathering histogram data for a sensor
+body sensor_2_14::histogram_monitor_stop {} {
+    set hist_monitor 0
+    #Stop any pending updates to Amester-side histogram
+    after cancel $hist_after
+    #One final update
+    histogram_read
+}
+
+body sensor_2_14::histogram_window {} {
+    histogram_graph
+    if {$has_hist != 0 && !$hist_monitor} {
+	histogram_monitor_start
+    }
+}
+
+body sensor_2_14::histogram_clear {} {
+    #Reset tag so we force histogram_read to get the histogram, even if
+    #the snapshot tag is the same.
+    set hist_last_tag ""
+
+    set hist_updates 0
+    set hist_low 0
+    set hist_high 0
+    set len [expr $hist_num_bins + 2]
+    vector create ::v_${objname}_diff($len)
+    vector create ::v_${objname}_raw($len)
+    vector create ::v_${objname}_raw_old($len)
+    vector create ::v_${objname}_hist($len)
+    vector create ::v_${objname}_hist_old($len)
+    vector create ::v_${objname}_hist_exists($len)
+    set ::v_${objname}_diff(:) 0
+    set ::v_${objname}_raw(:) 0
+    set ::v_${objname}_raw_old(:) 0
+    set ::v_${objname}_hist(:) 0
+    set ::v_${objname}_hist_old(:) 0
+    set ::v_${objname}_hist_exists(:) 0
+}
+
+
+# Sensor data
+#
+# This function is its own callback.  (It initiates itself)
+#
+#
+body sensor_2_14::sensor_data_callback { status databytes} {
+    ::amesterdebug::debug sensor "$this sensor_data_callback status=$status"
+
+    if {$status == 0} {
+	# Record local time of new data
+	set localtime [expr [clock clicks -milliseconds] - $::start_time]
+	
+	# Process data
+	set n [binary scan $databytes "IIIISSSSS" timestamp timestamp_min timestamp_max value_acc value min max statusreg test]
+	
+	set sf $scalefactor
+	set value_acc [expr $value_acc * $sf]
+	set value [expr $value * $sf]
+	set min [expr $min * $sf]
+	set max [expr $max * $sf]
+	incr updates
+	
+	#After sensor value is updated, evaluate blade_new_data to inform user scripts.
+	#::amesterdebug::debug bc "bc_blade_sensor_data_callback doing callback"
+	catch {blade_new_data} result
+	if {$result ne ""} {
+	    ::amesterdebug::debug 1 "blade_new_data callback failed: $result"
+	    return -code error 
+	}
+	#::amesterdebug::debug bc "bc_blade_sensor_data_callback return from callback"
+    }
+
+    #Regardless of error.  Try to get another value. Host may have been unavailable.
+    if {[$host isa localhost]} {
+	# Request more data after 1 second. So we don't influence power consumption on localhost too much.
+	set data_after [after $update_period [list $this sensor_data]]
+    } else {
+	sensor_data
+    }
+}
+
+body sensor_2_14::sensor_data {} {
+    ::amesterdebug::debug sensor "$this sensor_data"
+    set monitored_list [$amec get monitored]
+
+    # monitor sensor, if it is turned on
+    if {[lsearch -exact $monitored_list $this] != -1} {
+	set callback "[code $this sensor_data_callback] \$status \$databytes"
+	$amec send 3a 3c [binary format "H2c" "06" $sensornum] $callback $::priority_data
+    } else {
+	::amesterdebug::debug bc "No match for $this found in $monitored_list"
+    }
+}
+
+# Important:
+# The input parameters "name" and "sensor" must have those names. User-level callbacks depend on this.
+#
+#
+body sensor_2_14::blade_new_data {} {
+    if {$scalefactor < 1.0} {
+	set fstring "%\#.5g %s"
+    } else {
+	set fstring "%.5g %s"
+    }
+    set g_value [format $fstring $value $u_value]
+    set g_value_acc [format $fstring $value_acc $u_value]
+    set g_max [format $fstring $max $u_value]
+    set g_min [format $fstring $min $u_value]
+
+    if {$::options(gui)} {
+	#update vectors in graph
+	::v_value_${objname} dup v
+	::v_timestamp_${objname} dup t
+	
+	set d [expr [::v_value_${objname} length] - $hist ]
+	if {$d > 0} {
+	    v set [v range $d end]
+	    t set [t range $d end]
+	}
+	v append $value
+	t append $localtime
+	
+	# NOTE: setting vectors will update any graphs automatically
+	v dup ::v_value_${objname}
+	t dup ::v_timestamp_${objname}
+	
+	set avg [vector expr mean(v)] 
+	set g_avg "[format "%8.1f" $avg] $u_value"
+	
+	#nevine: added the max of the last 8 point history
+	set max8pt_hist [vector expr max(v)]
+    }
+
+    #Update cluster speed information
+    if {$sensorname eq "CPUspd1s"} {
+	if {[winfo exists .cluster_speed.g.plot]} {
+	    $amec host cluster_speed_new_data $this
+	}
+	if {[winfo exists .cluster_cycles.g.plot]} {
+	    $amec cluster_cycles_new_data $this
+	}
+    }
+
+    # Check status changes
+    set local_has_hist [expr ($statusreg & 0x02) >> 1]
+    if {$local_has_hist==1 && $has_hist==0} {
+	#Histogram was turned on for first time, so get config.
+	histogram_get_config
+    }
+    set has_hist $local_has_hist
+
+    # Process any user commands on this data
+    if {$::new_data_callback ne ""} {
+	catch {eval $::new_data_callback $this} result
+	if {$result != ""} { 
+	    bgerror "blade_new_data: $result"
+	}
+    }
+
+    return
+}
+
+body sensor_2_14::get {what args} {
+    switch $what {
+	histogram {
+	    if {$args eq "values"}  {
+		set v ::v_${objname}_hist
+		eval return $$v\(:)
+	    } elseif {$args eq "bins"} {
+		set v ::v_${objname}_hist_graphx
+		eval return $$v\(:)
+	    } else {
+		return -code error "unknown histogram $args"
+	    }
+	}
+	default {return -code error "Invalid arguement for sensor_2_14::get : $what $args"}
+    }
+}
+
+body sensor_2_14::wait {args} {
+    switch $args {
+	histogram {::vwait [scope hist_updates]}
+	value {::vwait [scope updates]}
+	default {::vwait [scope updates]}
+    }
+}

@@ -1,0 +1,966 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+#--------------------------------------------------------------------
+#
+# tunasim procedures
+# Supports connections to the Texas Memory Systems tuna emulator.
+#
+#--------------------------------------------------------------------
+
+if {$::options(gui)} {
+    package require Tk
+}
+
+#
+# Tuna console
+#
+
+
+class tunasim_cons {
+
+    private variable command
+    private variable winname ""
+    private variable counter 0 ;# unique name of cmd window
+
+    #The tunasim object that owns the console
+    private variable tunasim {}
+    
+    constructor {parent} {
+
+	set tunasim $parent
+
+	# Command history always holds a blank command at the beginning
+	# so that commands are 1..N, like tcl history.
+	# There is also a blank command at position N (the current one)
+	set command(count) 0
+	set command(index) 1
+	set command(history) [list "" ""]
+	set command(line) ""
+	init
+    }
+    
+    destructor {
+	destroy $winname
+    }
+    
+    # Object Methods
+    private method init {}
+    private method up {}
+    private method down {}
+    private method clip {}
+    private method process {}
+
+    public method show {}
+    public method hide {}
+    public method history {}
+    public method puts {args}
+}
+
+
+# Up-arrow
+body tunasim_cons::up {} {
+    incr command(index) -1
+    if {$command(index) == 0} {
+	#we moved beyond the end of list. move back
+	incr command(index)
+    } else {
+	#only set the command line if we moved the index
+	set command(line) [lindex $command(history) $command(index)]
+	${winname}.f2.entry icursor end
+    }
+}
+
+# Down-arrow
+body tunasim_cons::down {} {
+    incr command(index)
+    if {$command(index) == [llength $command(history)]} {
+	#we moved beyond the end of list. move back
+	incr command(index) -1
+    } else {
+	#only set the command line if we moved the index
+	set command(line) [lindex $command(history) $command(index)]
+	${winname}.f2.entry icursor end
+    }
+}
+
+#
+# Trap puts for console. Non-console puts pass thru to Tcl ::puts
+#
+# Tcl puts is defined: puts ?-nonewline? ?channelID? string
+#
+
+# Clip command window to last 1000 lines
+body tunasim_cons::clip {} {
+    ${winname}.text mark set start {end - 1000 lines}
+    ${winname}.text delete 1.0 start
+}
+
+# Evaluate a command in global command(line) variable
+body tunasim_cons::process {} {
+    variable command
+
+    set _errorInfo $::errorInfo
+    set _errorCode $::errorCode
+
+    
+    if {$command(line) eq "!!"} {
+	set command(line) [lindex $command(history) end-1]
+	process
+	return
+    }
+    
+    set command(history) [linsert $command(history) end-1 $command(line)]
+    incr command(count)
+    if {[llength $command(history)] > 102} {
+	set command(history) [lreplace $command(history) 1 1]
+    }
+    set command(index) [expr [llength $command(history)] - 1]
+    
+    #${winname}.text insert end "$command(line)\n" cmd
+    #set code [catch {uplevel \#0 $command(line)} result]
+    $tunasim qemu $command(line)
+    #if {$result ne ""} {
+    #${winname}.text insert end "$result\n"
+    #}
+    ${winname}.text yview moveto 1.0
+    clip
+    
+    set command(line) {}
+}
+
+
+body tunasim_cons::show {} {
+    if {![winfo exists $winname]} {
+	init
+    }
+    if {[winfo exists $winname]} {
+	wm state $winname normal
+	focus $winname
+	raise $winname
+    }
+}
+
+body tunasim_cons::hide {} {
+    if {[winfo exists $winname]} {
+	wm iconify $winname
+    }
+}
+
+
+body tunasim_cons::init {} {
+    #variable command
+    set winname ".tunasim_cons[incr counter]"
+    toplevel $winname
+    wm title $winname "$tunasim console"
+    wm withdraw $winname
+
+    frame ${winname}.f1
+    text ${winname}.text -wrap word -yscrollcommand [list ${winname}.yscroll set] -width 80 -height 10 -font {-family courier -size 10}
+    scrollbar ${winname}.yscroll -orient vertical -command [list ${winname}.text yview]
+    frame ${winname}.f2
+    entry ${winname}.f2.entry -textvariable [scope command(line)] -relief sunken -font {-family courier -size 10}
+    label ${winname}.f2.l -text ">" -font {-family courier -size 10}
+    grid ${winname}.f2.l ${winname}.f2.entry -sticky news
+    bind ${winname}.f2.entry <Return> [code $this process]
+    bind ${winname}.f2.entry <KeyPress-Up> [code $this up]
+    bind ${winname}.f2.entry <KeyPress-Down> [code $this down]
+
+    grid ${winname}.text ${winname}.yscroll -sticky news
+    grid ${winname}.f2 -sticky news
+    grid rowconfigure ${winname} 0 -weight 1
+    grid columnconfigure ${winname} 0 -weight 1
+
+    grid columnconfigure ${winname}.f2 1 -weight 1
+    
+    ${winname}.text tag configure cmd -foreground blue
+
+    wm protocol ${winname} WM_DELETE_WINDOW [code $this hide]
+
+}
+
+body tunasim_cons::history {} {
+    variable command
+    # set count to first element
+    set count [expr $command(count) - [llength $command(history)] + 3]
+    # don't show first or last dummy elements
+    set l [expr [llength $command(history)] - 1]
+    for {set i 1} {$i < $l} {incr i} {
+	${winname}.text insert end [format "%5i %s\n" $count [lindex $command(history) $i]]
+	incr count
+    }
+}
+
+body tunasim_cons::puts {args} {
+
+    # defaults
+    set err 0
+    set nonewline 0
+    set stream stdout
+
+    set myargs $args
+
+    if [string match "-nonewline" [lindex $args 0]] {
+	set nonewline 1
+	set myargs [lreplace $myargs 0 0]
+    }
+    
+    switch -- [llength $myargs] {
+	1 {set string [lindex $myargs 0]}
+	2 {
+	    set stream [lindex $myargs 0]
+	    set string [lindex $myargs 1]
+	}
+	default {set err 1}
+    }
+
+    #Copy output to console window, if stdout or stderr
+    switch -- $stream {
+	stdout {}
+	stderr {}
+	default {set err 1}
+    }
+
+    clip
+
+    #Write console window, if no errors
+    if {!$err} {
+	if {$nonewline} {
+	    ${winname}.text insert end "$string"
+	} else {
+	    ${winname}.text insert end "$string\n"
+	}
+    } else {
+	# err=1 means do not write to console
+    }
+    ${winname}.text yview moveto 1.0
+    
+    # Always pass-thru to ::puts and return its results
+    #if [catch "::commandline::commandline_puts_original $args" result] {
+    #::commandline::commandline_puts_original $result
+    #return -code error $result
+    #}
+    #return $result
+}
+
+#
+# Connect to tuna emulator
+#
+
+if {$::options(gui)} {
+    .mbar.file.menu.connect add command -label "tunasim..." -command "tunasimconnect \#auto"
+}
+ 
+class tunasimconnect {
+    public variable name "mytuna"
+    public variable addr ""
+    public variable port 4444
+    public variable close 1
+    public variable window ""
+    public variable timeout 120000
+
+    public method make_gui {}
+    public method connect {}
+
+    constructor args {
+	if {$::options(gui)} {make_gui}
+    }
+
+    destructor {
+	#delete GUI
+	if {$window ne ""} {
+	    destroy $window
+	}
+    }
+
+}
+
+body tunasimconnect::make_gui {} {
+
+    if {[winfo exists $window]} {
+	focus $window
+	raise $window
+	wm deiconify $window
+	return
+    }
+
+    regsub -all "::" .tunasimconnect_$this "" window
+
+    toplevel $window
+    wm title $window "Connect to Tuna Emulator"
+    
+    label $window.name_l -text "System name" -anchor w
+    entry $window.name -textvariable [scope name]
+    grid $window.name_l $window.name -sticky news -row 0
+
+    label $window.addr_l -text "IP address" -anchor w
+    entry $window.addr -textvariable [scope addr]
+    grid $window.addr_l $window.addr -sticky news -row 1
+    bind $window.addr <Return> [code $this connect]
+
+    label $window.port_l -text "IP port" -anchor w
+    entry $window.port -textvariable [scope port]
+    grid $window.port_l $window.port -sticky news -row 2
+
+    label $window.timeout_l -text "Timeout (ms)" -anchor w
+    entry $window.timeout -textvariable [scope timeout]
+    grid $window.timeout_l $window.timeout -sticky news -row 3
+
+    checkbutton $window.close -text "Close this window after connecting" -variable [scope close]
+    grid $window.close -row 6 -sticky w
+
+    button $window.connect -text "Connect" -command [code $this connect] -background lightblue
+    grid $window.connect -row 8 -sticky news
+}
+
+body tunasimconnect::connect {} {
+    set obj ""
+    set result ""
+    catch {$window.connect configure -state disabled}
+    if {[catch {set obj [tunasim ::$name -addr $addr -port $port -timeout $timeout]} result]} {
+	puts "There was an error connecting: result = $result"
+	bgerror $result
+    } else {
+	if {![$obj isa tunasim]} {
+	    puts "There was an error connecting: obj= $obj"
+	} elseif {$close} {delete object $this}
+    }
+    catch {$window.connect configure -state normal}
+}
+
+#
+# Tuna simulator object
+#
+ 
+class tunasim {
+    inherit host
+
+    constructor {args} {
+	::amesterdebug::debug tunasim "tunasim constructor for $this"
+	set addr {}
+	set port {}
+	eval configure $args
+	if {$addr eq ""} {
+	    return -code error "Missing a required parameter, -addr <IP address>"
+	}
+	if {$port eq ""} {
+	    return -code error "Missing a required parameter, -port <TPC/IP port for emulator>"
+	}
+
+	# Get basic tunasim info (Number of processors, VPD, etc.)
+	#if {[catch {init} initresult]} {
+	#    return -code error "Can't initialize tunasim object: $initresult"
+	#}
+
+	if {$::options(gui)} {
+	    #Add cons
+	    set cons [tunasim_cons #auto $this]
+	    .host.c.f.${name}_menu.functions.m add command -label "Tuna console" -command [code $cons show]
+	    $cons show
+	}
+
+	tunasim_open
+	init
+
+	if {$::options(gui)} {make_gui}
+	if {$::options(gui)} {host_window_update a b c}
+    }
+    
+    destructor {
+	::amesterdebug::debug tunasim "$this destructor"
+	::amesterdebug::debug destructor "$this destructor"
+	#FIXME: delete GUI associated with tunasim
+	#FIXME: delete all callbacks (bc holds them...)
+
+	tunasim_close
+	
+
+	# Cancel any pending afters
+	after cancel $ipmi_health_after
+	foreach amec $ameclist {
+	    delete object $amec
+	}
+    }
+
+    # Get basic info on tunasim (initialization)
+    public method init {}
+
+    protected variable ithread ""
+    protected method ipmi_thread_start {}
+
+    #
+    # Scope
+    #
+    protected method scope_make_window {}
+
+    #Performance metrics for workload graphs
+    protected variable perfmetric_latency 0
+    protected variable perfmetric_throughput 0
+
+    #GUI
+    public method make_gui {}
+
+    #Communication
+    protected variable wait_send_sync
+    protected variable wait_send_sync_databytes
+    protected variable wait_send_sync_status
+    public method ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}}
+    protected method ipmi_send_sync_callback {myuid status databytes}
+    public method ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""} } 
+    public method ipmi_send {rssa chan lun netfn cmd data callback priority}
+    protected variable ipmi_msgq {}
+    protected variable inprogress
+    protected variable inprogress_q {}
+    public variable timeout 120000
+    protected method ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {to {}} {position end}}
+    protected method ipmi_dequeue {}
+    public method tunasim_process {}
+    public method tunasim_process_packet {packet}
+    protected method ipmi_health {}
+    public variable ipmi_health_period 10000 {ipmi_health}
+    protected variable ipmi_health_after 0
+
+    public variable tunasim_status "disconnected"
+    public variable tunasim_sock 0
+    public variable port {}
+    public variable tunasim_open_after 0
+    public method tunasim_open {}
+    public method tunasim_open_timeout {}
+    public method tunasim_open_callback {}
+    public method tunasim_close {}
+    public method tunasim_timeout {}
+    protected method tunasim_send {tag rssa chan lun netfn cmd data}
+
+    #AME
+    #List of AME Components on host
+    protected variable ameclist {}
+    public method get {what args}
+
+    # Timing
+    #Track time between sending messages out over network
+    protected variable data_last_ipmideqlatency [clock clicks -millisecond]
+
+    #IPMI
+    public variable ipmi_cache_enable 1
+    common ipmi_cache
+    #NOTE: Use of "common ipmi_cache" requires that all ipmi commands using the ipmi_send_sync_cache command
+    #put AME API firmware level in the "tag" input parameter so that systems using different firmware levels can
+    #connected to at the same time without a cache collision.
+
+    public method qemu {msg}
+    
+    public variable mtm "tunasim"
+
+    public variable cons {}
+    public variable last_recv_amester 0
+}
+
+body tunasim::init {} {
+    ::amesterdebug::debug tunasim "init"
+
+    ipmi_health
+    
+    set ameclist [ame::init_ame_objects $name]
+    return
+}
+
+body tunasim::get {what args} {
+    switch $what {
+	ameclist {return $ameclist}
+	amec {return [lindex $ameclist 0]}
+	tunasim_status {return $tunasim_status}
+	default {return -code error "unknown command for amec: $what $args"}
+    }
+}
+
+
+body tunasim::make_gui {} {
+    ::amesterdebug::debug gui "tunasim_make_host_window $name"
+
+    # Add all sensor labels
+    # These are the stats that are created as labels
+    set host_label_list [list {name} {addr} {port} {link}]
+
+    foreach {key}  $host_label_list  {
+    	if {![info exists ::host_stats_anchor($key)]} {
+    	    set anchor e
+    	} else {
+    	    set anchor $::host_stats_anchor($key)
+    	}
+    	host_window_add $name $key [label .host.c.f.${name}_${key} -textvariable [scope $key] -anchor $anchor -font $::fixedfont] $key
+    }
+
+}
+
+
+#
+# tunasim Communication
+#
+
+
+# ipmi_send_sync
+#
+# This is a command to send an ipmi cmd to a tunasim.
+# This command waits for a response, prints it, then returns.
+
+body tunasim::ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}} {
+    set myuid [uid_create]
+    set callback "ipmi_send_sync_callback $myuid \$status \$databytes"
+    ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
+    # The "exists" check below is required since tunasim can fake some responses and
+    # set the vwait variable sooner than we can check it!
+    if {![info exists ::wait_send_sync($myuid)]} {
+	::vwait ::wait_send_sync($myuid)
+    }
+    #::vwait [scope wait_send_sync($myuid)]
+    array unset wait_send_sync $myuid
+    set status $wait_send_sync_status($myuid)
+    set databytes $wait_send_sync_databytes($myuid)
+#    set myname wait_send_sync_status($myuid)
+#    eval set status $$myname
+#    set myname wait_send_sync_databytes($myuid)
+#    eval set databytes $$myname
+    array unset wait_send_sync_status $myuid
+    array unset wait_send_sync_databytes $myuid
+    return [list $status $databytes]
+}
+
+body tunasim::ipmi_send_sync_callback {myuid status databytes} {
+    set wait_send_sync_status($myuid) $status
+    set wait_send_sync_databytes($myuid) $databytes
+    set ::wait_send_sync($myuid) 1
+    #::amesterdebug::debug ipmi ">>($this) ipmi_send_sync_callback"
+}
+
+body tunasim::ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""} } {
+    #Ignore channel and lun in cache. Assume all firmware instances on systemuse same AME API and AME version
+    set index [binary format "a*a*H2H2H2a*" $mtm $tag $rssa $netfn $cmd $data]
+    if {$ipmi_cache_enable && ![info exists ipmi_cache($index)]} {
+	set ipmi_cache($index) [ipmi_send_sync $rssa $chan $lun $netfn $cmd $data $priority ]
+    } else {
+	#Print any debugging for results returned from cache
+	if {[::amesterdebug::set ipmi]} {
+	    binary scan $data "H*" all
+	    ::amesterdebug::debug ipmi "IPMI cache query ($this): rssa=$rssa chan=$chan lun=$lun netfn=$netfn cmd=$cmd data_len=[string length $data] data=$all"
+	    set status [lindex $ipmi_cache($index) 0]
+	    set databytes [lindex $ipmi_cache($index) 1]
+	    binary scan $databytes "H*" all
+	    ::amesterdebug::debug ipmi "IPMI cache response ($this): status=$status data=$all"
+	}
+    }
+    return $ipmi_cache($index)
+}
+
+
+body tunasim::ipmi_send {rssa chan lun netfn cmd data callback priority} {
+    ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
+}
+
+# based on bc::net_send_msg
+#
+#
+body tunasim::ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {to {}} {position end}} {
+
+    #Do we still need tags?
+    set tag 0
+
+    if {$to eq {}} {set to $timeout}
+
+    set item [list $priority $tag $callback $to $rssa $chan $lun $netfn $cmd $data]
+    set ipmi_msgq [linsert $ipmi_msgq $position $item]
+
+    # sort message queue by priority
+    # note: messages of the same priority remain in the same order.
+    #   Therefore, inserting into the front or end of the msgq will add the
+    #   message at the beginning or end of messages with the same priority.
+    # 
+    set ipmi_msgq [lsort -integer -index 0 $ipmi_msgq]
+
+    # Process right away, if no messages are waiting
+    if {[llength $ipmi_msgq] == 1} {
+	ipmi_dequeue
+    }    
+}
+
+# ipmi_dequeue
+# This function checks if 1) we are ready to send out a message to the host
+# and 2) there is a message waiting to be sent. If so, send it.
+# If not, just return.
+body tunasim::ipmi_dequeue {} {
+    ::amesterdebug::debug tunasim "$this ipmi_dequeue"
+    # Do not start new requests if network traffic is paused
+    if {!$::network} {return}
+    # Do nothing if we are waiting on a response from host.
+    if {[llength $inprogress_q]} {return}
+    # Do nothing if outgoing message queue is empty
+    if {![llength $ipmi_msgq]} {
+	return
+    }
+    # Do nothing if network is not connected. Health monitor with reconnect.
+    if {$tunasim_status ne "connected"} {
+	::amesterdebug::debug tunasim "ipmi_dequeue: not connected ($tunasim_status)"
+	return
+    }
+
+    set item [lindex $ipmi_msgq 0]
+    set priority [lindex $item 0]
+    set tag [lindex $item 1]
+    set callback [lindex $item 2]
+    set to [lindex $item 3]
+    set rssa [lindex $item 4]
+    set chan [lindex $item 5]
+    set lun [lindex $item 6]
+    set netfn [lindex $item 7]
+    set cmd [lindex $item 8]
+    set data [lindex $item 9]
+    
+    if {[info exists inprogress($tag,tag)]} {
+	::amesterdebug::debug tunasim "Message for $tag pending with same tag. ${netfn}${cmd}${data}"
+	return
+    }
+
+    #::amesterdebug::debug tunasim "dequeue: tag=$tag msg=${netfn}${cmd}${data}"
+    set inprogress($tag,tag) $tag
+    set inprogress($tag,priority) $priority
+    set inprogress($tag,callback) $callback
+    set inprogress($tag,timeout) $to
+    set inprogress($tag,rssa) $rssa
+    set inprogress($tag,chan) $chan
+    set inprogress($tag,lun) $lun
+    set inprogress($tag,netfn) $netfn
+    set inprogress($tag,cmd) $cmd
+    set inprogress($tag,data) $data
+    lappend inprogress_q $tag
+
+    set ipmi_msgq [lreplace $ipmi_msgq 0 0]
+
+    if {$to != 0} {
+	set inprogress($tag,after) [after $to [code $this tunasim_timeout]]
+	#::amesterdebug::debug after "after set $inprogress($tag,after) for $this"
+    }
+    
+    tunasim_send $tag $rssa $chan $lun $netfn $cmd $data
+
+    ${name}_ipmimsgcount add_data 1
+}
+
+body tunasim::qemu {msg} {
+    puts $tunasim_sock $msg
+}
+
+body tunasim::tunasim_send {tag rssa chan lun netfn cmd data} {
+    set len [string length $data]
+    if {[::amesterdebug::set ipmi]} {
+	binary scan $data "H*" all
+	::amesterdebug::debug ipmi "IPMI sent ($this): netfn=$netfn cmd=$cmd data=$all"
+	::amesterdebug::debug ipmi "data length = $len bytes"
+    }
+
+    #set outmsg [binary format "H2H2H2H2H2a*" $rssa $chan $lun $netfn $cmd $data] 
+    #binary scan $outmsg "H*" all
+    binary scan $data "H*" data_ascii
+    set outmsg "amester ${rssa}${chan}${lun}${netfn}${cmd}${data_ascii}"
+    ::amesterdebug::debug tunasim "sending packet $outmsg"
+    if { $netfn == 6 && $cmd == 1 } {
+        ::amesterdebug::debug ipmi "($this) Fake the IPMI response to get device ID"
+	set inprogress($tag,start_time_ms) [clock clicks -milliseconds]
+        tunasim_process_packet [binary format H2a* 00 "hello amester"]
+    } else { 
+	# Send message on network
+	if {[catch {puts $tunasim_sock $outmsg} result]} {
+	    ::amesterdebug::debug tunasim "($this) tunasim_send error: failed socket write:  $result"
+	} else {
+	    # Success. Record number of bytes transmitted
+	    ${name}_ipmibytestx add_data $len
+	}
+	flush $tunasim_sock
+	 
+	#Mark time when message is sent
+	if {$tag ne {}} {
+	    set now [clock clicks -millisecond]
+	    set inprogress($tag,start_time_ms) $now
+	    ${name}_ipmideqlatency add_data [expr $now - $data_last_ipmideqlatency]
+	    set data_last_ipmideqlatency $now
+	}
+    }
+}
+
+body tunasim::tunasim_process {} {
+    ::amesterdebug::debug tunasim "$this tunasim_process"
+    set status ""
+    set ipmi_databytes ""
+    set result ""
+    set tag ""
+
+    if {[fconfigure $tunasim_sock -error] ne ""} {
+	::amesterdebug::debug tunasim "there was an error reading $agent_sock"
+	agent_close
+	return
+    }
+
+    if {[eof $tunasim_sock]} {
+	tunasim_close
+	return
+    }
+
+    if {[catch {set packet [gets $tunasim_sock line]} result]} {
+	::amesterdebug::debug tunasim "tunasim_process: can't read packet. result=$result"
+	tunasim_close
+	return
+    } else {
+	::amesterdebug::debug tunasim "Received: $line"
+	set all [binary format "a*" $line]
+	binary scan $all "H*" hex
+	::amesterdebug::debug tunasim "hex=${hex}"
+	if {[llength $line] >= 2} {
+	    set tag [lindex $line 0]
+	    set data [lindex $line 1]
+	}
+	if {$tag eq "amesterrsp"} {
+	    #Process the bytes read from the socket
+	    set packet_bin [binary format H* $data]
+	    binary scan $packet_bin H* ascii
+	    ::amesterdebug::debug tunasim "bytes = $ascii"
+	    tunasim_process_packet $packet_bin
+	    set last_recv_amester 1
+	} elseif {[string first "amester" $line] != -1} {
+	    #ignore echo of amester
+	    set last_recv_amester 1
+	} elseif {$last_recv_amester == 1} {
+	    #ignore echo of prompt after amester response
+	    set last_recv_amester 0
+	} else {
+	    ::amesterdebug::debug tunasim "Ignoring non-ipmi repsonse"
+	    set last_recv_amester 0
+	    if {$cons ne {}} {
+		#Write the line into the emulator console
+		$cons puts $line
+	    }
+	}
+    }
+}
+   
+body tunasim::tunasim_process_packet {packet} {
+    set stop_time_ms [clock clicks -milliseconds]
+    set callback ""
+
+    # Read the inprogress data and clear it for next message
+
+    set tag [lindex $inprogress_q 0]; #whatever it was when enqueued
+    #record message latency
+    if {![info exists inprogress($tag,tag)]} {
+	::amesterdebug::debug 1 "WARN: $this tunasim_process_packet received $tag, but no message was sent."
+	binary scan $packet "H*" all
+	::amesterdebug::debug 1 "      packet received: $all"
+	exit
+	return
+    }
+    set start_time_ms $inprogress($tag,start_time_ms)
+    set callback $inprogress($tag,callback)
+    after cancel $inprogress($tag,after)
+    array unset inprogress "$tag,*"
+    set inprogress_q [lreplace $inprogress_q 0 0]
+
+    # Now all the inprogress data has been used. Can launch next command
+    # and overlap callback processing with network latency of next command.
+
+    ipmi_dequeue
+
+    # Now that message has gone out, do long latency processing.
+    ${name}_ipmimsglatency add_data [expr $stop_time_ms - $start_time_ms]
+
+    set start_processing [clock clicks -milliseconds]
+
+    set databytes {}
+    set status {}
+
+    binary scan $packet "ca*" status databytes 
+    set len [string length $databytes]
+    #Set useful data bytes received (not status)
+    ${name}_ipmibytesrx add_data $len
+
+    if {[::amesterdebug::set ipmi]} {
+	binary scan $databytes "H*" all
+	::amesterdebug::debug ipmi "IPMI received ($this): status=$status data=$all"
+    }
+
+    if {$callback ne {}} {
+        ::amesterdebug::debug tunasim "($this) tunasim_process_packet callback=$callback"
+        if {[catch [list eval $callback] result]} {
+            ::amesterdebug::debug 1 "($this) tunasim_process_packet error; failed executing callback $callback: $result"
+	    binary scan $databytes "H*" all
+	    ::amesterdebug::debug 1 "  status=$status databytes=$all"
+        }
+    }
+
+    #Record time to process the message
+    set now [clock clicks -milliseconds]
+    ${name}_ipmiprocesslatency add_data [expr $now - $start_processing]
+
+}
+
+body tunasim::tunasim_timeout {} {
+    ::amesterdebug::debug health "$this timeout"
+    tunasim_close
+    tunasim_open
+    return
+}
+
+body tunasim::tunasim_close {} {
+    ::amesterdebug::debug tunasim "tunasim_close"
+    set link "down"
+    set code [catch {close $tunasim_sock}]
+    set tunasim_status "closed"
+    if {$tunasim_sock == 0} {return}
+
+    #Delete timers
+    after cancel $tunasim_open_after
+    foreach timer [array names inprogress *,after] {
+	after cancel $inprogress($timer)
+    }
+
+    #Delete inprogress queue (since socket is closed, no more
+    #messages can return
+    set inprogress_q {}
+
+    # remove storage for this sock and repost all callback messages
+    foreach index [array names inprogress *,tag] {
+	#Get message that failed
+	set tag $inprogress($index)
+	set priority $inprogress($tag,priority)
+	set callback $inprogress($tag,callback)
+	set to $inprogress($tag,timeout)
+	set rssa $inprogress($tag,rssa)
+	set chan $inprogress($tag,chan)
+	set lun $inprogress($tag,lun)
+	set netfn $inprogress($tag,netfn)
+	set cmd $inprogress($tag,cmd)
+	set data $inprogress($tag,data)
+	#remove message from inprogress array
+	array unset inprogress "$tag,*"
+	#Sending message will also reopen the connection
+	ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority $to 0
+    }
+
+    set tunasim_sock 0 
+    
+}
+
+body tunasim::tunasim_open {} {
+    ::amesterdebug::debug tunasim "tunasim_open $this"
+    set result {}
+
+    # Done if a socket already exists or is opening
+    if {$tunasim_sock != 0 || $tunasim_status eq "opening"} {return}; 
+
+    if {[catch {set tunasim_sock [socket $addr $port]} result]} {
+	::amesterdebug::debug tunasim "($this) tunasim_open; failed to open socket: $result"
+	return
+    }
+    fconfigure $tunasim_sock -buffering line -blocking no -translation {auto auto}
+    ::amesterdebug::debug tunasim "tunasim_sock =$tunasim_sock"
+    ::amesterdebug::debug tunasim [fconfigure $tunasim_sock]
+    fileevent $tunasim_sock r [code $this tunasim_open_callback]
+
+    set tunasim_status "opening"
+    ::amesterdebug::debug tunasim "$this opening"
+    set tunasim_open_after [after $timeout [code $this tunasim_open_timeout]]
+
+    #set tunasim_open_after [after $timeout [code $this tunasim_timeout]]
+
+    #fileevent $tunasim_sock w {}
+    #fileevent $tunasim_sock r [code $this tunasim_process]
+
+
+    #set tunasim_status "connected"
+    #set link "up"
+
+}
+
+body tunasim::tunasim_open_timeout {} {
+    ::amesterdebug::debug tunasim "$this open_timeout"
+    set tunasim_status "timeout"
+}
+
+body tunasim::tunasim_open_callback {} {
+    ::amesterdebug::debug tunasim "$this open_callback"
+    after cancel $tunasim_open_after
+
+    if {[fconfigure $tunasim_sock -error] ne ""} {
+	::amesterdebug::debug tunasim "there was an error opening $tunasim_sock"
+	tunasim_close
+	return
+    }
+
+    if {[eof $tunasim_sock] || [catch {set packet [gets $tunasim_sock line]} result]} {
+	::amesterdebug::debug tunasim "tunasim_process: can't read packet. result=$result"
+	tunasim_close
+	return
+    } else {
+	::amesterdebug::debug tunasim "Open Received: $line"
+	$cons puts $line
+	#Check for "root>" or "Processor Boot Successful" or "Serial port enabled"
+	if {[string first "Processor Boot Successful" $line] != -1} {
+	    set tunasim_status "connected"
+	    set link "up"
+	    fileevent $tunasim_sock w {}
+	    fileevent $tunasim_sock r [code $this tunasim_process]
+	    fconfigure $tunasim_sock -translation {crlf cr}
+	    puts $tunasim_sock ""
+	    #puts $tunasim_sock ""
+	    #puts $tunasim_sock ""
+	    # if there are pending messages, start sending them.
+	    if {[llength $ipmi_msgq]} {
+		ipmi_dequeue
+	    }
+	}
+    }
+
+    return 0
+}
+
+
+body tunasim::ipmi_health {} {
+    ::amesterdebug::debug tunasim "ipmi_health $name $tunasim_status"
+
+    after cancel $ipmi_health_after
+
+    if {$ipmi_health_period} {
+	set ipmi_health_after [after $ipmi_health_period [code $this ipmi_health]]
+    } else {
+	return
+    }
+
+    switch -- $tunasim_status {
+	"disconnected" {
+            ::amesterdebug::debug netchealth "($this) Channel is disconnected, opening"
+	    tunasim_open
+	}
+	"opening" {
+            ::amesterdebug::debug netchealth "($this) Channel is opening, please wait"
+	}
+	"connected" {
+            ::amesterdebug::debug netchealth "($this) Channel is connected, dispatching"
+	    ipmi_dequeue
+	}
+	"timeout" {
+            ::amesterdebug::debug netchealth "($this) Channel timed out, closing"
+	    tunasim_close
+	}
+	"error" {
+            ::amesterdebug::debug netchealth "($this) Channel error, closing"
+	    tunasim_close
+	}
+	"closed" {
+            ::amesterdebug::debug netchealth "($this) Channel closed, attempting to open"
+	    # Try to re-open host
+	    tunasim_open
+	}
+	default {
+	    ::amesterdebug::debug tunasim "Error: undefined status $tunasim_status for $name"
+	}
+    }
+
+}
+

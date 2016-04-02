@@ -1,0 +1,901 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+#--------------------------------------------------------------------
+#
+# OpenPOWER host procedures
+#
+#--------------------------------------------------------------------
+
+if {$::options(gui)} {
+    .mbar.file.menu.connect add command -label "OpenPOWER..." -command "openpowerconnect \#auto"
+}
+ 
+class openpowerconnect {
+    public variable name "myopenpower"
+    public variable ipmi_user "ADMIN"
+    public variable ipmi_passwd "admin"
+    public variable ipmi_ipmitool "ipmitool"
+    public variable addr ""
+    public variable close 1
+    public variable window ""
+
+    #GUI
+    public method make_gui {}
+
+    public method connect {}
+
+    public variable win_title "Connect to OpenPOWER"
+
+    constructor args {
+	if {$::options(gui)} {make_gui}
+    }
+
+    destructor {
+	#delete GUI
+	if {$window ne ""} {
+	    destroy $window
+	}
+    }
+
+}
+
+body openpowerconnect::make_gui {} {
+
+    if {[winfo exists $window]} {
+	focus $window
+	raise $window
+	return
+    }
+
+    regsub -all "::" .openpowerconnect_$this "" window
+
+    toplevel $window
+    wm title $window $win_title
+    
+    label $window.name_l -text "System name" -anchor w
+    entry $window.name -textvariable [scope name]
+    grid $window.name_l $window.name -sticky news -row 0
+
+    label $window.addr_l -text "IP address" -anchor w
+    entry $window.addr -textvariable [scope addr]
+    grid $window.addr_l $window.addr -sticky news -row 1
+
+    label $window.user_l -text "IPMI user" -anchor w
+    entry $window.user -textvariable [scope ipmi_user]
+    grid $window.user_l $window.user -sticky news -row 2
+
+    label $window.pass_l -text "IPMI password" -anchor w
+    entry $window.pass -textvariable [scope ipmi_passwd]
+    grid $window.pass_l $window.pass -sticky news -row 3
+
+    #User may provide full path to ipmitool
+    label $window.prog_l -text "ipmitool program" -anchor w
+    entry $window.prog -textvariable [scope ipmi_ipmitool]
+    grid $window.prog_l $window.prog -sticky news -row 4
+
+    checkbutton $window.close -text "Close this window after connecting" -variable [scope close]
+    grid $window.close -row 6 -sticky w
+    
+    button $window.connect -text "Connect" -command [code $this connect] -background lightblue
+    grid $window.connect -row 8 -sticky news
+}
+
+body openpowerconnect::connect {} {
+    set obj ""
+    set result ""
+    catch {$window.connect configure -state disabled}
+    if {[catch {set obj [openpower ::$name -addr $addr -ipmi_ipmitool $ipmi_ipmitool -ipmi_user $ipmi_user -ipmi_passwd $ipmi_passwd]} result]} {
+	puts "There was an error connecting: result = $result"
+	bgerror $result
+    } else {
+	if {![$obj isa openpower]} {
+	    puts "There was an error connecting: obj= $obj"
+	} elseif {$close} {delete object $this}
+    }
+    catch {$window.connect configure -state normal}
+}
+
+ 
+class openpower {
+    inherit host
+
+    #Required configuration parameters
+    public variable ipmi_user ""
+    public variable ipmi_passwd ""
+    public variable ipmi_ipmitool "ipmitool"
+    
+    #Parameters
+    protected variable vpdversion ""
+    protected variable mtm ""
+    protected variable model ""
+    protected variable serial ""
+    protected variable assetid ""
+
+    protected variable macaddr1 ""
+    protected variable macaddr2 ""
+    protected variable macaddr3 ""
+    protected variable macaddr4 ""
+
+    #IPMI
+    public variable ipmi_cache_enable 1
+    common ipmi_cache
+    #NOTE: Use of "common ipmi_cache" requires that all ipmi commands using the ipmi_send_sync_cache command
+    #put AME API firmware level in the "tag" input parameter so that systems using different firmware levels can
+    #connected to at the same time without a cache collision.
+    public variable legacy_mode 0
+
+    constructor {args} {
+	::amesterdebug::debug openpower "openpower constructor for $this"
+	eval configure $args
+	if {$addr eq ""} {
+	    return -code error "Missing a required parameter, -addr <IP address>"
+	}
+	if {$ipmi_user eq ""} {
+	    return -code error "Missing a required parameter, -ipmi_user <username>"
+	}
+	if {$ipmi_passwd eq ""} {
+	    return -code error "Missing a required parameter, -ipmi_passwd <password>"
+	}
+
+	if {$::options(gui)} {make_gui}
+
+	# Get basic openpower info (Number of processors, VPD, etc.)
+	if {[catch {init} initresult]} {
+	    return -code error "Can't initialize openpower object: $initresult"
+	}
+
+	if {$::options(gui)} {host_window_update a b c}
+    }
+    
+    destructor {
+	::amesterdebug::debug openpower "$this destructor"
+	#FIXME: delete GUI associated with openpower
+	#FIXME: delete all callbacks (bc holds them...)
+
+	# Cancel any pending afters
+	after cancel $ipmi_health_after
+    }
+
+    # Get basic info on openpower (initialization)
+    public method init {}
+
+    # Helper that returns the available OCC endpoints on this node
+    public method find_occ_instance {}
+    public method find_occ_instance2 {}
+    public method detect_ami_level {}
+
+    protected variable ithread ""
+    protected method ipmi_thread_start {}
+    protected method ipmi_thread_start_openipmi {}
+
+    #
+    # Scope
+    #
+    protected method scope_make_window {}
+
+    #Performance metrics for workload graphs
+    protected variable perfmetric_latency 0
+    protected variable perfmetric_throughput 0
+
+    #GUI
+    public method make_gui {}
+    public method add_node_gui_menu {host rssa_list}
+
+    #Communication
+    public variable ipmicmd ""
+    protected variable wait_send_sync
+    protected variable wait_send_sync_databytes
+    protected variable wait_send_sync_status
+    public method raw_ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}}
+    public method ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}}
+    protected method ipmi_send_sync_callback {myuid status databytes}
+    public method ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""}}
+    public method ipmi_send {rssa chan lun netfn cmd data callback priority}
+    protected variable ipmi_msgq {}
+    protected variable inprogress
+    protected method ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {timeout {}} {position end}}
+    protected method ipmi_dequeue {}
+    public method print_queue {}
+    public method print_inprogress {}
+    public method ipmi_process {tag result}
+    protected method ipmi_health {}
+    protected variable ipmi_health_period 1000
+    protected variable ipmi_health_after 0
+    public variable timeout 120000
+
+    # Timing
+    # Track time between sending messages out over network
+    protected variable data_last_ipmideqlatency [clock clicks -millisecond]
+    
+
+    #AME
+    #List of AME Components on host
+    protected variable ameclist {}
+    public method get {what args}
+
+}
+
+# This function will probe the OpenPOWER BMC to find OCC endpoints
+# It uses the OCC POLL function. Any non-error response is assumed OK.
+#
+# Return is a list of OCC endpoints specified as a 2-character hexadecimal
+#   routing value for the IPMI command. (ex: 01 02)
+#
+# Note this method will report 2 OCC on a 1 socket Habanero system, since
+# it treats the routing byte of 0x01 and 0x02 the same. This causes Amester
+# to instantiate two AME endpoints, when there is really 1.
+body openpower::find_occ_instance {} {
+    set _occlist {}
+    #OCC numbering starts at 1 for the routing byte in the OCC passthru command
+    set _occ 1
+    
+    #Query for number of OCC instance (number of OCC on a node)
+    #Try OCC instances sequentially as long as previous ones pass.
+    while {1} {
+	::amesterdebug::debug openpower "query occ $_occ"
+	set _occhex [format "%02x" $_occ]
+	#Use the AMESTER version number command to check if AMESTER endpoint is available
+	#Note: 20 3a and 3c are ignored by the openpower implementation that uses ipmitool
+	if {[catch {set result [ipmi_send_sync 20 00 $_occhex 3a 3c [binary format "H2" 1c]] } catch_result]} {
+	    #Error
+	    ::amesterdebug::debug openpower "catch: $catch_result"
+	    break
+	} else {
+	    #Works
+	    set _err [lindex $result 0]
+	    set _datalen [binary scan [lindex $result 1] "H*" _allbytes]
+	    ::amesterdebug::debug openpower "query occ: error = $_err"
+	    ::amesterdebug::debug openpower "query occ: data = $_allbytes"
+	    
+	    if {$_err == 0} {
+		lappend _occlist $_occhex
+	    } else {
+		break
+	    }
+	}
+	incr _occ
+    }
+    
+    ::amesterdebug::debug openpower "OCC instances (hex routing value) = $_occlist"
+    
+    return $_occlist   
+}
+
+# Determine the number of OCC instances by counting the POWER processors
+# listed in the IPMI FRU inventory.
+#
+# A hack to use ipmitool to find OCC instances, since the
+# FRU data is very hard to get (many IPMI commands) on OpenPOWER.
+# Try "ipmitool -vv ... fru list" to see the long sequence of commands.
+#
+# Note: Habanero system numbers CPUs from 0 while Garrison
+# and Firestone numbers CPUs at 1. Therefore, the CPU number
+# cannot be directly used as the OCC routing byte.
+#
+body openpower::find_occ_instance2 {} {
+    set _occ_count 0
+    set _proc_count 0
+    set _occlist {}
+    #Put spaces between each byte in data parameter
+    set errorcode ""
+    set result ""
+    set ipmicmd "$ipmi_ipmitool -H $addr -U $ipmi_user -P $ipmi_passwd"
+    ::amesterdebug::debug openpower "trying |$ipmicmd fru list"
+    if {[catch {
+	set f1 [open "|$ipmicmd fru list" r]
+    } openresult]} {
+	::amesterdebug::debug openpower "FAIL openresult=$openresult"
+	return -code error "FAIL blah"
+    }
+    while {![eof $f1]} {
+	gets $f1 line
+	::amesterdebug::debug openpower "ipmi line = $line"
+	set words [split $line]
+	foreach word $line {
+            set _occnum {}
+	    if {[scan $word "CPU %d" _procnum]} {
+                incr _proc_count
+            } elseif {[scan $word "CPU%d" _procnum]} {
+                incr _proc_count
+            }
+	}
+    }
+    if {[catch {close $f1} closeresult]} {
+	set n 0
+	foreach w [split $closeresult] {
+	    set n [scan $w "rsp=%x" errorcode]
+	    if {$n==1} {
+		::amesterdebug::debug openpower "FAIL w=$w closeresult=$closeresult errorcode=$errorcode"
+		return -code error "Fail to find OCC in FRU inventory"
+	    }
+	}
+    }
+    for {set i 1} {$i <= $_proc_count} {incr i} {
+        lappend _occlist [format "%02x" $i]
+    }
+    ::amesterdebug::debug openpower "Found occlist = $_occlist"
+    return $_occlist
+}
+
+body openpower::detect_ami_level {} {
+    #Determine if legacy mode should be used
+    #
+    #Legacy mode means that we are using an older, development level of AMI firmware
+    #that does not use the OCC number in the IPMI message. It can only talk to the first
+    #OCC in the system.
+    set _occhex 01
+
+    #Try legacy mode
+    set legacy_mode 1
+    #Use OCC version command "01"
+    if {[catch {set result [raw_ipmi_send_sync 20 00 $_occhex 3a 0d [binary format "H2" 01]] } catch_result]} {
+	#Failed for some reason
+	::amesterdebug::debug openpower "Detection of legacy mode = $legacy_mode failed: $catch_result"
+    } else {
+	set _status [lindex $result 0]
+	if {$_status == 0} {
+	    #We have older AMI firmware that is multi-OCC aware
+	    ::amesterdebug::debug openpower "AMI firmware supporting 1 OCC only detected"
+	    return
+	}
+    }
+    
+    #Try newer AMI firmware
+    set legacy_mode 0
+    #Use OCC version command 0x01 routing to OCC 1 (first 01 below is the OCC routing byte)
+    if {[catch {set result [raw_ipmi_send_sync 20 00 $_occhex 3a 0d [binary format "H2H2" 01 01]] } catch_result]} {
+	#Failed for some reason
+	::amesterdebug::debug openpower "Detection of legacy mode = $legacy_mode failed: $catch_result"
+    } else {
+	set _status [lindex $result 0]
+	if {$_status == 0} {
+	    #We have newer AMI firmware that is multi-OCC aware
+	    ::amesterdebug::debug openpower "AMI firmware supporting multi-OCC detected"
+	    return
+	}
+    }
+
+    ::amesterdebug::debug 1 "ERROR: Cannot detect Amester firmware with old or new AMI firmware -- Is system powered on?"
+    return -code error "ERROR: Cannot detect Amester firmware with old or new AMI firmware -- Is system powered on?"
+}
+
+body openpower::init {} {
+    ::amesterdebug::debug openpower "init"
+    ipmi_thread_start
+    ipmi_health
+
+    detect_ami_level
+ 
+    #The _possible_nodes list is hexidecimal rsaddr values in string format for all nodes
+    #Presently, OpenPOWER supports a single node.
+    set _possible_nodes [list 20]
+    set fwlist {}
+    foreach nodeValue $_possible_nodes {
+	if {[catch {set occlist [find_occ_instance2]} result]} {
+	    ::amesterdebug::debug openpower "($this) Failed to get occlist for node.  Skipping node $nodeValue. result=$result"
+	} else {
+	    if {$occlist eq {}} {
+		#Some older AMI firmware levels fail to show the OCC properly in the fru inventory.
+		#There must have been at least 1 OCC for us to get to this point.
+		set occlist {01}
+		#return -code error "FAIL: No OCC endpoint found for $addr"
+	    }
+	    #Node exists
+	    lappend fwlist $nodeValue
+	    #Add menu for each node so that we have a place to place each OCC
+	    if {$::options(gui)} {
+		add_node_gui_menu $name [expr $nodeValue - 20]
+	    }
+	    set ameclist [concat $ameclist [ame::init_ameocc_objects $name $nodeValue $occlist]]                     
+	    ::amesterdebug::debug openpower "Found node $nodeValue with OCC: $occlist"
+	}
+    }
+    ::amesterdebug::debug openpower "List of available nodes: $fwlist"
+    
+}
+
+
+body openpower::make_gui {} {
+    ::amesterdebug::debug gui "openpower_make_host_window $name"
+
+    # Add all sensor labels
+    # These are the stats that are created as labels
+    set host_label_list [list {name} {addr} {ameutilport} {link} {vpdversion} {mtm} {model} {serial} {assetid} {macaddr1} {macaddr2} {macaddr3} {macaddr4}]
+
+    foreach {key}  $host_label_list  {
+    	if {![info exists ::host_stats_anchor($key)]} {
+    	    set anchor e
+    	} else {
+    	    set anchor $::host_stats_anchor($key)
+    	}
+    	host_window_add $name $key [label .host.c.f.${name}_${key} -textvariable [scope $key] -anchor $anchor -font $::fixedfont] $key
+    }
+
+}
+
+
+
+
+
+#
+# Openpower Communication
+#
+
+# ipmi_send_sync
+#
+# This is a command to send an ipmi cmd to a openpower.
+# This command waits for a response, prints it, then returns.
+
+body openpower::ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}} {
+    #Note: lun is the OCC number
+    set myuid [uid_create]
+    set callback "ipmi_send_sync_callback $myuid \$status \$databytes"
+    #Encapsulate in OCC pass-thru command
+    set _netfn 3a
+    set _cmd 0d
+    if {$legacy_mode} {
+	set _data [binary format "H2H2H2a*" 41 $cmd 00 $data]
+    } else {
+	set _data [binary format "H2H2H2H2a*" $lun 41 $cmd 00 $data]
+    }
+    ipmi_queue $rssa $chan $lun $_netfn $_cmd $_data $callback $priority
+    ::vwait [scope wait_send_sync($myuid)]
+    array unset wait_send_sync $myuid
+    set myname wait_send_sync_status($myuid)
+    eval set status $$myname
+    set myname wait_send_sync_databytes($myuid)
+    eval set databytes $$myname
+    array unset wait_send_sync_status $myuid
+    array unset wait_send_sync_databytes $myuid
+    return [list $status $databytes]
+}
+
+body openpower::raw_ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}} {
+    set myuid [uid_create]
+    set callback "ipmi_send_sync_callback $myuid \$status \$databytes"
+    ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
+    ::vwait [scope wait_send_sync($myuid)]
+    array unset wait_send_sync $myuid
+    set myname wait_send_sync_status($myuid)
+    eval set status $$myname
+    set myname wait_send_sync_databytes($myuid)
+    eval set databytes $$myname
+    array unset wait_send_sync_status $myuid
+    array unset wait_send_sync_databytes $myuid
+    return [list $status $databytes]
+}
+
+body openpower::ipmi_send_sync_callback {myuid status databytes} {
+    set wait_send_sync_status($myuid) $status
+    set wait_send_sync_databytes($myuid) $databytes
+    set wait_send_sync($myuid) 1
+}
+
+#No caching for now
+body openpower::ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""}} {
+    #Ignore channel and lun in cache. Assume all OCC use same AME API and AME version
+    set index [binary format "a*a*H2H2H2a*" $addr $tag $rssa $netfn $cmd $data]
+    if {$ipmi_cache_enable && ![info exists ipmi_cache($index)]} {
+	set ipmi_cache($index) [ipmi_send_sync $rssa $chan $lun $netfn $cmd $data $priority ]
+    } else {
+	#Print any debugging for results returned from cache
+	if {[::amesterdebug::set ipmi]} {
+	    binary scan $data "H*" all
+	    ::amesterdebug::debug ipmi "IPMI cache query ($this): rssa=$rssa chan=$chan lun=$lun netfn=$netfn cmd=$cmd data_len=[string length $data] data=$all"
+	    set status [lindex $ipmi_cache($index) 0]
+	    set databytes [lindex $ipmi_cache($index) 1]
+	    binary scan $databytes "H*" all
+	    ::amesterdebug::debug ipmi "IPMI cache response ($this): status=$status data=$all"
+	}
+    }
+    return $ipmi_cache($index)
+}
+
+body openpower::ipmi_send {rssa chan lun netfn cmd data callback priority} {
+    #Note: lun is the OCC number
+    set _netfn 3a
+    set _cmd 0d
+    if {$legacy_mode} {
+	set _data [binary format "H2H2H2a*" 41 $cmd 00 $data]
+    } else {
+	set _data [binary format "H2H2H2H2a*" $lun 41 $cmd 00 $data]
+    }
+    ipmi_queue $rssa $chan $lun $_netfn $_cmd $_data $callback $priority
+}
+
+# based on bc::net_send_msg
+#
+#
+body openpower::ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {to {}} {position end}} {
+
+    #Do we still need tags
+    set tag $name
+
+    if {$to eq {}} {set to $timeout}
+
+    set item [list $priority $tag $callback $to $rssa $chan $lun $netfn $cmd $data]
+    set ipmi_msgq [linsert $ipmi_msgq $position $item]
+
+    # sort message queue by priority
+    # note: messages of the same priority remain in the same order.
+    #   Therefore, inserting into the front or end of the msgq will add the
+    #   message at the beginning or end of messages with the same priority.
+    # 
+    set ipmi_msgq [lsort -integer -index 0 $ipmi_msgq]
+
+    if {[::amesterdebug::set openpower]} {
+	::amesterdebug::debug openpower "$this ipmi_queue"
+	print_queue
+	print_inprogress
+    }
+
+    if {[llength $ipmi_msgq] == 1} {
+	ipmi_dequeue
+    }    
+}
+
+# based on bc::net_write_msg
+#
+#
+body openpower::ipmi_dequeue {} {
+    ::amesterdebug::debug openpower "$this ipmi_dequeue"
+    # Do not start new requests if network traffic is paused
+    if {!$::network} {
+	::amesterdebug::debug openpower "  No network traffic allowed"
+	return
+    }
+    # Do nothing if we are waiting on a response from host.
+    #if {[llength $inprogress_q]} {return}
+    if {![llength $ipmi_msgq]} {
+	::amesterdebug::debug openpower "  msgq has no requests"
+	return
+    }
+
+    if {[::amesterdebug::set openpower]} {
+	print_queue
+	print_inprogress
+    }
+
+    set item [lindex $ipmi_msgq 0]
+    set priority [lindex $item 0]
+    set tag [lindex $item 1]
+    set callback [lindex $item 2]
+    set to [lindex $item 3]
+    set rssa [lindex $item 4]
+    set chan [lindex $item 5]
+    set lun [lindex $item 6]
+    set netfn [lindex $item 7]
+    set cmd [lindex $item 8]
+    set data [lindex $item 9]
+    
+    if {[info exists inprogress($tag,tag)]} {
+	::amesterdebug::debug openpower "Message for $tag pending with same tag. ${netfn}${cmd}${data}"
+	return
+    }
+
+    ::amesterdebug::debug openpower "dequeue: tag=$tag "
+    #"msg=${netfn}${cmd}${data}"
+    set inprogress($tag,tag) $tag
+    set inprogress($tag,priority) $priority
+    set inprogress($tag,callback) $callback
+    set inprogress($tag,timeout) $to
+    set inprogress($tag,rssa) $rssa
+    set inprogress($tag,chan) $chan
+    set inprogress($tag,lun) $lun
+    set inprogress($tag,netfn) $netfn
+    set inprogress($tag,cmd) $cmd
+    set inprogress($tag,data) $data
+
+    set ipmi_msgq [lreplace $ipmi_msgq 0 0]
+
+    #Note: No use of timeout for local ipmitool commands
+    #if {$to != 0} {
+    #    set inprogress($tag,after) [after $to [code $this netc_timeout ]]
+    #    ::amesterdebug::debug after "after set $inprogress($tag,after) for $this"
+    #}
+
+
+    thread::send -async $ithread [list ipmi [::amesterdebug::set ipmi] $tag $rssa $chan $lun $netfn $cmd $data]
+
+    #Mark 1 more ipmi message sent
+    ${name}_ipmimsgcount add_data 1
+
+    #Count netfn, cmd, and data fields as the transmitted data. (Not all the other IPMI protocol)
+    ${name}_ipmibytestx add_data [expr [string length $data] + 2]
+
+    #Mark time when message is sent
+    if {$tag ne {}} {
+	set now [clock clicks -millisecond]
+	set inprogress($tag,start_time_ms) $now
+	${name}_ipmideqlatency add_data [expr $now - $data_last_ipmideqlatency]
+	set data_last_ipmideqlatency $now
+    }
+
+}
+
+body openpower::print_queue {} {
+    puts "Queue --------------------"
+    set _c 0
+    if {[llength $ipmi_msgq]} {
+	set ipmi_msgq [lsort -integer -index 0 $ipmi_msgq]
+	foreach item $ipmi_msgq {
+	    set priority [lindex $item 0]
+	    set tag [lindex $item 1]
+	    set callback [lindex $item 2]
+	    set to [lindex $item 3]
+	    set rssa [lindex $item 4]
+	    set chan [lindex $item 5]
+	    set lun [lindex $item 6]
+	    set netfn [lindex $item 7]
+	    set cmd [lindex $item 8]
+	    set data [lindex $item 9]
+	    binary scan $data "H*" databytes
+	    puts "#$_c priority=$priority tag=$tag timeout=$to callback=$callback cmd=$cmd data=$databytes"
+	    incr _c
+	}
+	puts "--------------------------"
+    }
+}
+
+body openpower::print_inprogress {} {
+    return
+    puts "Inprogress --------------------"
+    puts "queue = { $inprogress_q }"
+    foreach index [array names inprogress *,tag] {
+        #Get message that failed
+        set tag $inprogress($index)
+        set priority $inprogress($tag,priority)
+        set callback $inprogress($tag,callback)
+        set to $inprogress($tag,timeout)
+        set rssa $inprogress($tag,rssa)
+        set chan $inprogress($tag,chan)
+        set lun $inprogress($tag,lun)
+        set netfn $inprogress($tag,netfn)
+        set cmd $inprogress($tag,cmd)
+        set data $inprogress($tag,data)
+	binary scan $data "H*" databytes
+	puts "tag=$tag priority=$priority timeout=$to callback=$callback cmd=$cmd data=$databytes"
+    }
+    puts "-------------------------------"
+}
+
+
+body openpower::ipmi_process {tag result} {
+    set stop_time_ms [clock clicks -milliseconds]
+    ::amesterdebug::debug openpower "$this ipmi_process $tag $result"
+    set status ""
+    set ipmi_databytes ""
+
+    if {![info exists inprogress($tag,callback)]} {
+	# Error: received reply without a message
+	::amesterdebug::debug 1 "$this ipmi_process received $tag, but no message was sent."
+	return
+    } 
+
+    if {$result eq ""} {
+	# Error in processing IPMI command. Got
+	# nothing back. This can happen if ipmicmd is run at too
+	# quickly back-to-back.
+	# Policy: repost it
+	set priority $inprogress($tag,priority)
+	set callback $inprogress($tag,callback)
+	set to $inprogress($tag,timeout)
+	set rssa $inprogress($tag,rssa)
+	set chan $inprogress($tag,chan)
+	set lun $inprogress($tag,lun)
+	set netfn $inprogress($tag,netfn)
+	set cmd $inprogress($tag,cmd)
+	set data $inprogress($tag,data)
+	array unset inprogress "$tag,*"
+	ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority $to
+	return
+    }
+
+    set start_time_ms $inprogress($tag,start_time_ms)
+    set callback $inprogress($tag,callback)
+    #Timeout is not used today for local ipmitool call
+    #after cancel $inprogress($tag,after)
+    array unset inprogress "$tag,*"
+
+    # Now all the inprogress data has been used. Can launch next command
+    # and overlap callback processing with network latency of next command.
+
+    ipmi_dequeue
+
+    # Now that message has gone out, do long latency processing.
+
+    # Log IPMI msg latency
+    ${name}_ipmimsglatency add_data [expr $stop_time_ms - $start_time_ms]
+    # Log bytes received
+    ${name}_ipmibytesrx add_data [llength $result]
+
+    #Set status and databytes for the callback to use
+    set status [expr [lrange $result 0 0]]
+    foreach byte [lrange $result 1 end] {
+	set ipmi_databytes "${ipmi_databytes}[format "%02x" $byte]"
+    }
+    set databytes [binary format "H*" $ipmi_databytes]
+
+    if {[::amesterdebug::set ipmi]} {
+	binary scan $databytes "H*" all
+	::amesterdebug::debug ipmi "IPMI received ($this): status=$status data=$all"
+    }
+
+    # Run the callback
+    if {[catch [list eval $callback] result]} {
+	::amesterdebug::debug 1 "ERROR while executing callback= $callback\n  result = $result"
+	binary scan $databytes "H*" all
+	::amesterdebug::debug 1 "  callback input was status=$status data=$all"
+    }
+    
+    #Record time to process the message
+    set now [clock clicks -milliseconds]
+    ${name}_ipmiprocesslatency add_data [expr $now - $stop_time_ms]
+}
+
+body openpower::ipmi_health {} {
+    ipmi_dequeue
+    set ipmi_health_after [after $ipmi_health_period [code $this ipmi_health]]
+}
+
+#--------------------------------------------------------------------
+#
+# IPMI thread that communicates with IPMI stack on remote OpenPOWER
+#
+#--------------------------------------------------------------------
+
+body openpower::ipmi_thread_start {} {
+
+    # Try OpenIPMI cmd
+    ::amesterdebug::debug openpower "Try to use OpenIPMI"
+    if {![catch {
+	ipmi_thread_start_openipmi
+    } openresult]} {
+	#PASS
+	return
+    } else {
+	::amesterdebug::debug 1 "OpenIPMI failed with : $openresult"
+    }
+
+    # Cannot pass IPMI commands
+    return -code error "FAIL: Cannot find method to send IPMI commands to OpenPOWER system."
+}
+
+body openpower::ipmi_thread_start_openipmi {} {
+    set ithread [thread::create {
+
+    #The object the IPMI response returns to
+    set obj {}
+    #The thread where the object lives
+    tsv::get thread gthread gthread
+
+    tsv::get shared topdir topdir
+    tsv::get shared tmpdir tmpdir
+
+    set pid [pid]
+    #ipmicmd is a placeholder to be set later from the main thread (below)
+    set ipmicmd "ipmitool"
+    
+    proc ipmi {debug tag rssa chan lun netfn cmd {data ""}} {
+	global gthread
+	global obj
+	set result [doipmi $debug $rssa $chan $lun $netfn $cmd $data]
+	thread::send -async $gthread [list $obj ipmi_process $tag $result]
+    }
+    
+    proc doipmi {debug rssa chan lun netfn cmd {data ""}} {
+	global ipmicmd
+
+	#Put spaces between each byte in data parameter
+	set data2 {}
+	set databin [binary format "a*" $data]
+	set len [string length $databin]
+	for {set i 0} {$i < $len} {incr i} {
+	    set n [binary scan $databin "@${i}H2" byte]
+	    lappend data2 "0x$byte"
+	}
+	
+	set errorcode ""
+	set result ""
+	set cmdout "0x$netfn 0x$cmd $data2"
+	if {$debug} {	
+	    thread::send -async $::gthread [list ::amesterdebug::debug ipmi "trying |$ipmicmd raw $cmdout"]
+	}
+	if {[catch {
+	    set f1 [open "|$ipmicmd raw $cmdout" r]
+	} openresult]} {
+	    if {$debug} {
+		thread::send -async $::gthread [list ::amesterdebug::debug ipmi "FAIL openresult=$openresult"]
+	    }
+	    return -code error "FAIL blah"
+	}
+	while {![eof $f1]} {
+	    gets $f1 line
+	    if {$debug} {
+		thread::send -async $::gthread [list ::amesterdebug::debug ipmi "ipmi line = $line"]
+	    }
+	    set result [concat $result $line]
+	}
+	if {[catch {close $f1} closeresult]} {
+	    set n 0
+	    foreach w [split $closeresult] {
+		set n [scan $w "rsp=%x" errorcode]
+		if {$n} {break}
+	    }
+	    if {$debug} {
+		thread::send -async $::gthread [list ::amesterdebug::debug ipmi "FAIL closeresult=$closeresult errorcode=$errorcode"]
+	    }
+	    #return -code error "FAIL blah2"
+	}
+
+	#NOTE:
+	#IPMI only prints the error code if there is an error.
+	#OCC is returning 00 on every Amester command -- probably a bug.
+	#Therefore we don't really need the code appending the 00 below
+
+	if {$errorcode ne ""} {
+	    set result [format "%x" $errorcode]
+	}
+ 
+	set oldresult $result
+	set result ""
+	foreach byte [split $oldresult] {
+	    set result [concat $result "0x$byte"]
+	}
+	
+	if {$debug} {
+	    thread::send -async $::gthread [list ::amesterdebug::debug ipmi "ipmi out: $cmdout\n      in: $result"]
+	}
+	
+	return $result
+    }
+    
+    thread::wait
+}
+		]  
+    #end set ithread
+
+    #Setup ithread
+    set ipmicmd "$ipmi_ipmitool -H $addr -U $ipmi_user -P $ipmi_passwd"
+    
+    thread::send $ithread [list set obj $this]
+    if {$ipmicmd ne ""} {
+	thread::send $ithread [list set ipmicmd $ipmicmd]
+    }
+    
+    #test ipmicmd
+    thread::send $ithread [list doipmi 0 20 00 00 06 01] result
+    if {[string range $result 0 3] eq "FAIL"} {
+	#kill thread and return error.
+	thread::release $ithread
+	set ithread ""
+	return -code error "Error: Cannot connect to IPMI driver.\nPlease check that the IPMI driver is installed for your operating system."
+    } else {
+	#IPMI works
+    }
+    
+}
+
+body openpower::get {what args} {
+    switch $what {
+	ameclist {return $ameclist}
+	amec {return [lindex $ameclist 0]}
+	macaddr1 {return $macaddr1}
+	macaddr2 {return $macaddr2}
+	macaddr3 {return $macaddr3}
+	macaddr4 {return $macaddr4}
+	link { return $link}
+	net_status {return $net_status}
+	default {return -code error "unknown command for amec: $what $args"}
+    }
+    
+}
+
+body openpower::add_node_gui_menu {host node} {
+    set name ""
+    regsub -all "::" $host "" name
+    .host.c.f.${name}_menu.functions.m add cascade -label "${name}_node${node}" -menu .host.c.f.${name}_menu.functions.m._node${node}
+    menu .host.c.f.${name}_menu.functions.m._node${node}
+}    

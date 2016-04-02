@@ -1,0 +1,6 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+class tracebuffer {
+}

@@ -1,0 +1,83 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+package provide log 1.0
+package require Tk
+package require Itcl
+
+
+#--------------------------------------------------------------------
+#
+# Log window
+#
+# create log object:
+#
+# log thelog
+# log thelog -gui 0 # Do not display windows or use Tk
+#
+# Use log object: 
+#
+# thelog configure -sock [open "myfile"] # additional place to write output
+# thelog configure -scrollback 500 # limit retained output in window
+# thelog show  # display log window. Only with gui=1
+# thelog log "some output\n"  # write output
+#
+#--------------------------------------------------------------------
+
+class log {
+    #Sock is a file descriptor. (stdout, stderr, [open "mylog"])
+    public variable sock ""
+    public variable name ""
+    public variable gui 1
+    #Scrollback is number of lines in window. 0 = unlimited.
+    public variable scrollback 1000
+    public variable window ""
+    public variable output ""
+    public method show
+    public method log
+
+    constructor {args} {
+	#init name to object name (can be overridden by arg)
+	regsub -all "::" $this "" name
+	eval configure $args
+
+	if {$gui}  {
+	    set window ".${name}"
+	    toplevel $window
+	    wm withdraw $window
+	    text $window.text -wrap word -yscrollcommand [list $window.yscroll set] -width 100 -height 15
+	    scrollbar $window.yscroll -orient vertical -command [list $window.text yview]
+	    
+	    grid $window.text $window.yscroll -sticky news
+	    grid rowconfigure $window 0 -weight 1
+	    grid columnconfigure $window 0 -weight 1
+	}
+	
+    }
+}
+
+body log::show {} {
+    if {$window ne "" && [winfo exists $window]} {
+	wm state $window normal
+	focus $window
+	raise $window
+    }
+}
+
+body log::log {m} {
+    #save all output
+    append output "$m\n"
+    #put in window, if it exists
+    if {$window ne "" && [winfo exists $window]} {
+	$window.text insert end "$m\n"
+	$window.text yview moveto 1.0	
+	if {$scrollback} {
+	    $window.text mark set start [list end - $scrollback lines]
+	    $window.text delete 1.0 start
+	}
+    }
+    #put on socket, if it exists
+    if {$sock ne ""} {puts $sock "$m\n"}
+}
+

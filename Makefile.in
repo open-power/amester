@@ -1,0 +1,140 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+#Note: version numbers should be kept consistent with pkgIndex.tcl, amester.tcl, README.txt
+MAJOR_VERSION := 7
+MINOR_VERSION := 0
+RELEASE_DIR := build/v$(MAJOR_VERSION)_$(MINOR_VERSION)
+
+KBSKIT_LINUX := kbsmk8.6-bi
+
+DFLAGS= -g -DDEBUG
+CFLAGS = $(DFLAGS) -DCOMPILE_DATE="\"$(DATE)\"" -DCOMPILE_HOST="\"$(HOST)\""
+#LIBS = -ltcl -lm
+
+TAGS_FILES = $(foreach dir, ., $(shell find $(dir) -iname "*.hh") $(shell find $(dir) -iname "*.cc") $(shell find $(dir) -iname "*.c") $(shell find $(dir) -iname "*.h") $(shell find $(dir) -iname "*.cpp") $(shell find $(dir) -iname "*.y") $(shell find $(dir) -iname "*.l") )
+
+DATE=$(shell date)
+HOST=$(shell hostname)
+
+CPU = @host_cpu@
+VENDOR = @host_vendor@
+OS = @host_os@
+
+ifeq ($(findstring linux,$(OS)),linux)
+#this is linux
+TCLKIT_RUN := package/$(KBSKIT_LINUX)
+else
+# this is cygwin
+$(error Cannot make Amester for Cygwin)
+endif
+
+default: 
+	$(MAKE) build
+
+hostinfo:
+	@echo cpu=$(CPU)
+	@echo vendor=$(VENDOR)
+	@echo os=$(OS)
+
+.PHONY: TAGS
+TAGS:
+	echo tags files: $(TAGS_FILES)
+	-$(RM) TAGS
+	etags -t \
+		$(TAGS_FILES)
+
+
+package/sdx.kit:
+	mkdir -p package
+	cd package; wget -N http://www.equi4.com/pub/sk/sdx.kit
+
+package/$(KBSKIT_LINUX):
+	cd package/kbs; ./kbs-amester.tcl -v -builddir=build_$(OS)_$(CPU) -r -mk-bi -bi="tls1.6.7 expect5.45 tcllib1.18 tklib0.6 udp1.0.11 tclx8.4 rbc0.1" install kbskit8.6 2>&1 | tee out.txt
+	cp package/kbs/build_$(OS)_$(CPU)/bin/$(KBSKIT_LINUX) package
+
+#
+# Build a complete web package. Includes: svn source, binaries, docs
+#
+.PHONY: build_web
+build_web: build build_source
+	chmod -R a+r $(RELEASE_DIR)
+
+.PHONY: build_source
+build_source:
+	@echo Getting a current copy of the source code from svn
+	rm -rf amester_v$(MAJOR_VERSION)_$(MINOR_VERSION)
+	svn export svn+ssh://$(USER)@big-daddy.austin.ibm.com/gsa/ausgsa/projects/a/amester/svn/tags/AMESTER_V$(MAJOR_VERSION)_$(MINOR_VERSION)/amester amester_v$(MAJOR_VERSION)_$(MINOR_VERSION)
+	tar -cjf amester_v$(MAJOR_VERSION)_$(MINOR_VERSION).tar.bz2 amester_v$(MAJOR_VERSION)_$(MINOR_VERSION)
+	cp amester_v$(MAJOR_VERSION)_$(MINOR_VERSION).tar.bz2 $(RELEASE_DIR)
+
+	tar -cjf $(RELEASE_DIR)/examples.tar.bz2 amester_v$(MAJOR_VERSION)_$(MINOR_VERSION)/examples
+	cp -r amester_v$(MAJOR_VERSION)_$(MINOR_VERSION)/examples $(RELEASE_DIR)
+
+# 
+# Build executables from the current directory source code
+#
+.PHONY: build
+build: $(TCLKIT_RUN) package/sdx.kit package/$(KBSKIT_LINUX)
+	-mkdir -p build
+	rm -rf $(RELEASE_DIR)
+	$(MAKE) build_getcode
+	$(MAKE) build_linux
+	$(MAKE) agent_build_getcode
+	$(MAKE) agent_build_linux
+	cp vfs/doc/README.txt $(RELEASE_DIR)
+	cp vfs/doc/manual.txt $(RELEASE_DIR)
+	chmod -R a+r $(RELEASE_DIR)
+
+
+# Copy the source file to a new directory, but remove the .svn directories
+build_getcode:
+	-mkdir -p build
+	rm -rf build/amester.vfs
+	tar -c  --exclude .svn vfs | (cd build; tar -x)
+	mv build/vfs build/amester.vfs
+
+build_linux:
+	-mkdir -p build
+	cp -f package/$(KBSKIT_LINUX) build/kbskit.bin
+	echo Wrapping starpack....
+	cd build; ../$(TCLKIT_RUN) ../package/sdx.kit  wrap amester.kit -runtime kbskit.bin 
+	mv build/amester.kit amester
+	chmod 777 amester
+	-mkdir -p $(RELEASE_DIR)/linux
+	mv amester $(RELEASE_DIR)/linux
+
+#---------------------------------------
+# Build agent
+
+# 
+# Build executables from the current directory source code
+#
+.PHONY: agent_build
+agent_build: $(TCLKIT_RUN) package/sdx.kit package/$(KBSKIT_LINUX) 
+	-mkdir -p build
+	rm -rf $(RELEASE_DIR)
+	$(MAKE) agent_build_getcode
+	$(MAKE) agent_build_linux
+	cp vfs/doc/README.txt $(RELEASE_DIR)
+	cp vfs/doc/manual.txt $(RELEASE_DIR)
+
+
+# Copy the source file to a new directory, but remove the .svn directories
+agent_build_getcode:
+	-mkdir -p build
+	rm -rf build/agent.vfs
+	tar -c  --exclude .svn agent | (cd build; tar -x)
+	mv build/agent build/agent.vfs
+
+agent_build_linux:
+	-mkdir -p build
+	cp -f package/$(KBSKIT_LINUX) build/kbskit.bin
+	echo Wrapping starpack....
+	cd build; ../$(TCLKIT_RUN) ../package/sdx.kit  wrap agent.kit -runtime kbskit.bin 
+	mv build/agent.kit emtagent
+	chmod 777 emtagent
+	-mkdir -p $(RELEASE_DIR)/linux
+	mv emtagent $(RELEASE_DIR)/linux
+

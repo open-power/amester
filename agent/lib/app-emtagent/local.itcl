@@ -1,0 +1,458 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+
+#--------------------------------------------------------------------
+#
+# Localhost host procedures
+#
+#--------------------------------------------------------------------
+
+
+ 
+class localhost {
+    inherit host
+
+    #Parameters
+    protected variable vpdversion ""
+    protected variable mtm ""
+    protected variable model ""
+    protected variable serial ""
+    protected variable assetid ""
+
+    protected variable macaddr1 ""
+    protected variable macaddr2 ""
+    protected variable macaddr3 ""
+    protected variable macaddr4 ""
+
+    constructor {args} {
+	debug localhost "localhost constructor for $this"
+	eval configure $args
+
+	if {$::options(gui)} {make_gui}
+
+	# Get basic localhost info (Number of processors, VPD, etc.)
+	if {[catch {init} initresult]} {
+	    return -code error "Can't initialize localhost object: $initresult"
+	}
+
+	if {$::options(gui)} {host_window_update a b c}
+    }
+    
+    destructor {
+	debug localhost "$this destructor"
+	#FIXME: delete GUI associated with localhost
+	#FIXME: delete all callbacks (bc holds them...)
+
+	# Cancel any pending afters
+	after cancel $ipmi_health_after
+    }
+
+    # Get basic info on localhost (initialization)
+    public method init {}
+
+    protected variable ithread ""
+    protected method ipmi_thread_start {}
+    protected method ipmi_thread_start_openipmi {}
+
+    #
+    # Scope
+    #
+    protected method scope_make_window {}
+
+    #Performance metrics for workload graphs
+    protected variable perfmetric_latency 0
+    protected variable perfmetric_throughput 0
+
+    #GUI
+    public method make_gui {}
+
+    #Communication
+    public variable ipmicmd ""
+    protected variable wait_send_sync
+    protected variable wait_send_sync_databytes
+    protected variable wait_send_sync_status
+    public method ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}}
+    protected method ipmi_send_sync_callback {myuid status databytes}
+    public method ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""}}
+    public method ipmi_send {rssa chan lun netfn cmd data callback priority}
+    protected variable ipmi_msgq {}
+    protected variable inprogress
+    protected method ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {timeout {10000}} {position end}}
+    protected method ipmi_dequeue {}
+    public method ipmi_process {tag result}
+    protected method ipmi_health {}
+    protected variable ipmi_health_period 1000
+    protected variable ipmi_health_after 0
+
+    #AME
+    #List of AME Components on host
+    protected variable ameclist {}
+    public method get {what args}
+
+}
+
+body localhost::init {} {
+    debug localhost "init"
+    ipmi_thread_start
+    ipmi_health
+    #set ameclist [ame::init_ame_objects $name]
+}
+
+
+body localhost::make_gui {} {
+    debug gui "localhost_make_host_window $name"
+
+    # Add all sensor labels
+    # These are the stats that are created as labels
+    set host_label_list [list {name} {addr} {ameutilport} {link} {vpdversion} {mtm} {model} {serial} {assetid} {macaddr1} {macaddr2} {macaddr3} {macaddr4}]
+
+    foreach {key}  $host_label_list  {
+    	if {![info exists ::host_stats_anchor($key)]} {
+    	    set anchor e
+    	} else {
+    	    set anchor $::host_stats_anchor($key)
+    	}
+    	host_window_add $name $key [label .host.c.f.${name}_${key} -textvariable [scope $key] -anchor $anchor -font $::fixedfont] $key
+    }
+
+}
+
+
+
+
+
+#
+# Localhost Communication
+#
+
+
+# ipmi_send_sync
+#
+# This is a command to send an ipmi cmd to a localhost.
+# This command waits for a response, prints it, then returns.
+
+body localhost::ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}} {
+    set myuid [uid_create]
+    set callback "ipmi_send_sync_callback $myuid \$status \$databytes"
+    ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
+    ::vwait [scope wait_send_sync($myuid)]
+    array unset wait_send_sync $myuid
+    set myname wait_send_sync_status($myuid)
+    eval set status $$myname
+    set myname wait_send_sync_databytes($myuid)
+    eval set databytes $$myname
+    array unset wait_send_sync_status $myuid
+    array unset wait_send_sync_databytes $myuid
+    return [list $status $databytes]
+}
+
+body localhost::ipmi_send_sync_callback {myuid status databytes} {
+    set wait_send_sync_status($myuid) $status
+    set wait_send_sync_databytes($myuid) $databytes
+    set wait_send_sync($myuid) 1
+}
+
+body localhost::ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""}} {
+    return [ipmi_send_sync $rssa $chan $lun $netfn $cmd $data $priority]
+}
+
+body localhost::ipmi_send {rssa chan lun netfn cmd data callback priority} {
+    ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
+}
+
+# based on bc::net_send_msg
+#
+#
+body localhost::ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {timeout {10000}} {position end}} {
+
+    #Do we still need tags
+    set tag $name
+
+    set item [list $priority $tag $callback $timeout $rssa $chan $lun $netfn $cmd $data]
+    set ipmi_msgq [linsert $ipmi_msgq $position $item]
+    if {[llength $ipmi_msgq] == 1} {
+	ipmi_dequeue
+    }    
+}
+
+# based on bc::net_write_msg
+#
+#
+body localhost::ipmi_dequeue {} {
+    debug local "$this ipmi_dequeue"
+    if {![llength $ipmi_msgq]} {
+	return
+    }
+    # sort message queue by priority
+    # note: messages of the same priority remain in the same order.
+    #   Therefore, inserting into the front or end of the msgq will add the
+    #   message at the beginning or end of messages with the same priority.
+    # 
+    set ipmi_msgq [lsort -integer -index 0 $ipmi_msgq]
+
+    set item [lindex $ipmi_msgq 0]
+    set priority [lindex $item 0]
+    set tag [lindex $item 1]
+    set callback [lindex $item 2]
+    set timeout [lindex $item 3]
+    set rssa [lindex $item 4]
+    set chan [lindex $item 5]
+    set lun [lindex $item 6]
+    set netfn [lindex $item 7]
+    set cmd [lindex $item 8]
+    set data [lindex $item 9]
+    
+    if {[info exists inprogress($tag,tag)]} {
+	debug local "Message for $tag pending with same tag. ${netfn}${cmd}${data}"
+	return
+    }
+
+    debug local "dequeue: tag=$tag msg=${netfn}${cmd}${data}"
+    set inprogress($tag,tag) $tag
+    set inprogress($tag,priority) $priority
+    set inprogress($tag,callback) $callback
+    set inprogress($tag,timeout) $timeout
+    set inprogress($tag,rssa) $rssa
+    set inprogress($tag,chan) $chan
+    set inprogress($tag,lun) $lun
+    set inprogress($tag,netfn) $netfn
+    set inprogress($tag,cmd) $cmd
+    set inprogress($tag,data) $data
+
+    set ipmi_msgq [lreplace $ipmi_msgq 0 0]
+
+    thread::send -async $ithread [list ipmi $tag $rssa $chan $lun $netfn $cmd $data]
+
+}
+
+body localhost::ipmi_process {tag result} {
+    debug local "$this ipmi_process $tag $result"
+    set status ""
+    set ipmi_databytes ""
+
+    if {$result eq ""} {
+	#Error in processing IPMI command. Got nothing back. This can happen if ipmicmd is run at too quickly back-to-back.
+	#Policy: repost it
+	set priority $inprogress($tag,priority)
+	set callback $inprogress($tag,callback)
+	set timeout $inprogress($tag,timeout)
+	set rssa $inprogress($tag,rssa)
+	set chan $inprogress($tag,chan)
+	set lun $inprogress($tag,lun)
+	set netfn $inprogress($tag,netfn)
+	set cmd $inprogress($tag,cmd)
+	set data $inprogress($tag,data)
+	array unset inprogress "$tag,*"
+	ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
+	return
+    }
+
+    set status [expr [lrange $result 0 0]]
+
+    foreach byte [lrange $result 1 end] {
+	set ipmi_databytes "${ipmi_databytes}[format "%02x" $byte]"
+    }
+
+    #set n [binary scan $resultbin "H2H*" ipmi_status ipmi_databytes]
+    set databytes [binary format "H*" $ipmi_databytes]
+
+    if {![info exists inprogress($tag,callback)]} {
+	return
+	return -code error "$this ipmi_process received reply without message"
+	# Error: received reply without a message
+    } else {
+	set callback $inprogress($tag,callback)
+
+	if {[info exists inprogress($tag,after)]} {
+	    set after $inprogress($tag,after)
+	    after cancel $after
+	    debug local "cancel $after"
+	}
+
+	debug local "$this ipmi_process callback=$callback"
+	if {[catch [list eval $callback] result]} {
+	    debug 1 "ERROR while executing callback= $callback\n  result = $result"
+	}
+	array unset inprogress "$tag,*"
+    }
+
+    ipmi_dequeue
+}
+
+body localhost::ipmi_health {} {
+    ipmi_dequeue
+    set ipmi_health_after [after $ipmi_health_period [code $this ipmi_health]]
+}
+
+#--------------------------------------------------------------------
+#
+# IPMI thread that communicates with IPMI stack on local host
+#
+#--------------------------------------------------------------------
+
+body localhost::ipmi_thread_start {} {
+
+    if {[catch {[exec -keepnewline -- /etc/init.d/ipmi start]} result]} {
+	if {[lindex $::errorCode 0] eq "CHILDSTATUS"} {
+	    set status [lindex $::errorCode 2]
+	    if {$status !=0} {
+		return -code error "Could not start OpenIPMI driver: status=$status $result"
+	    } else {
+		#something unexpected
+		return -code error "Could not start OpenIPMI driver: errorCode=$::errorCode $result"
+	    }
+	} elseif {[lindex $::errorCode 0] eq "NONE"} {
+	} else {
+	    #something unexpected
+	    return -code error "Could not start OpenIPMI driver: errorCode=$::errorCode $result"
+	}
+
+    }
+    
+    # Try OpenIPMI cmd
+    debug local "Try to use OpenIPMI"
+    if {![catch {
+	ipmi_thread_start_openipmi
+    } openresult]} {
+	#PASS
+	return
+    } else {
+	puts "OpenIPMI failed with : $openresult"
+    }
+
+    # Cannot pass IPMI commands to local host.
+    return -code error "FAIL: Cannot find method to send IPMI commands to local host."
+}
+
+
+
+body localhost::ipmi_thread_start_openipmi {} {
+
+    #FIXME: can't tcl_platform(platform)
+    #set platform $tcl_platform(platform)
+    #set pid [pid]
+    #if {$platform ne "unix"} {
+#	return -code error "Error: OpenIPMI only available on unix (not $platform)"
+ #   }
+
+    set ithread [thread::create {
+
+    #The object the IPMI response returns to
+    set obj {}
+    #The thread where the object lives
+    tsv::get thread gthread gthread
+
+    set debug 1
+
+    tsv::get shared topdir topdir
+    tsv::get shared tmpdir tmpdir
+    
+    set pid [pid]
+    set ipmicmd "/usr/bin/ipmitool"
+    
+    proc ipmi {tag rssa chan lun netfn cmd {data ""}} {
+	global gthread
+	global obj
+	set result [doipmi $rssa $chan $lun $netfn $cmd $data]
+	thread::send -async $gthread [list $obj ipmi_process $tag $result]
+    }
+
+    proc doipmi {rssa chan lun netfn cmd {data ""}} {
+	global debug
+	global ipmicmd
+
+	#Put spaces between each byte in data parameter
+	set data2 {}
+	set databin [binary format "a*" $data]
+	set len [string length $databin]
+	for {set i 0} {$i < $len} {incr i} {
+	    set n [binary scan $databin "@${i}H2" byte]
+	    lappend data2 "0x$byte"
+	}
+	
+	set errorcode ""
+	set result ""
+	if {$debug} {puts "trying |$ipmicmd raw 0x$netfn 0x$cmd $data2"}
+	set cmdout "0x$netfn 0x$cmd $data2"
+	if {[catch {
+	    set f1 [open "|$ipmicmd raw 0x$netfn 0x$cmd $data2" r]
+	} openresult]} {
+	    if {$debug} {puts "FAIL openresult=$openresult"}
+	    return -code error "FAIL blah"
+	}
+	while {![eof $f1]} {
+	    gets $f1 line
+	    set result [concat $result $line]
+	}
+	if {[catch {close $f1} closeresult]} {
+	    set n 0
+	    foreach w [split $closeresult] {
+		set n [scan $w "rsp=%x" errorcode]
+		if {$n} {break}
+	    }
+	    if ($debug) {puts "FAIL closeresult=$closeresult errorcode=$errorcode"}
+	    #return -code error "FAIL blah2"
+	}
+	if {$errorcode ne ""} {
+	    set result [format "%x" $errorcode]
+	} else {
+	    if {$result eq ""} {
+		set result 00
+	    } else {
+		set result [concat 00 $result]
+	    }
+	}
+
+	set oldresult $result
+	set result ""
+	foreach byte [split $oldresult] {
+	    set result [concat $result "0x$byte"]
+	}
+	
+	if {$debug} {
+	    puts "ipmi out: $cmdout"	
+	    puts "      in: $result"
+	}
+
+	return $result
+    }
+    
+    thread::wait
+}
+		]  
+    #end set ithread
+    
+    thread::send $ithread [list set obj $this]
+    if {$ipmicmd ne ""} {
+	thread::send $ithread [list set ipmicmd $ipmicmd]
+    }
+
+    #test ipmicmd
+    thread::send $ithread [list doipmi 20 00 00 06 01] result
+    if {[string range $result 0 3] eq "FAIL"} {
+	#kill thread and return error.
+	thread::release $ithread
+	set ithread ""
+	return -code error "Error: Cannot connect to IPMI driver.\nPlease check that the IPMI driver is installed for your operating system.\nPlease check that the account running this program has the privilege level (e.g. root) required for accessing the IPMI driver."
+    } else {
+	#IPMI works
+    }
+    
+}
+
+body localhost::get {what args} {
+    switch $what {
+	ameclist {return $ameclist}
+	amec {return [lindex $ameclist 0]}
+	macaddr1 {return $macaddr1}
+	macaddr2 {return $macaddr2}
+	macaddr3 {return $macaddr3}
+	macaddr4 {return $macaddr4}
+	link { return $link}
+	net_status {return $net_status}
+	default {return -code error "unknown command for amec: $what $args"}
+    }
+    
+}

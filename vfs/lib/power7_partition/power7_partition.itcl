@@ -1,0 +1,926 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+package provide power7_partition 1.0
+
+#Updated for 740Q product firmware
+class partition_740Q {
+    #Name of object without "::"
+    public variable objname ""
+    #Parent partition table object
+    public variable partition_table {}
+
+    public variable phyp_fmin
+    public variable phyp_fmax
+    public variable phyp_ftarget
+    public variable es_policy
+    #ncores and corelist should not be manipulated by user
+    #use core_list_valid instead, which is a "nice" list.
+    public variable ncores
+    public variable corelist
+    public variable core_list_valid
+    public variable id
+    public variable valid
+    public variable perfmode
+    public variable pad1
+    public variable dps_bytes_in
+    public variable dps_bytes_in_size
+    public variable dps_bytes_out
+    public variable dps_bytes_out_size
+    public variable fmax_scale_factor
+    public variable freq_request
+    public variable util_speed_request
+    public variable pfloor_speed_request
+    public variable dips_speed_request
+    public variable thutil
+    public variable tlutil
+    public variable pfval
+    public variable step_up
+    public variable step_down
+    public variable sample_count_util
+    public variable epsilon_perc
+    public variable alpha_up
+    public variable alpha_down
+    public variable util_sensor_sel
+    public variable type
+    public variable soft_boundaries
+    public variable paddps
+
+    public method set_bytes {bytes index}
+    public method get_bytes {}
+
+    public method getgui {what {i_parent ""}}
+
+    constructor {parent args} {
+        ::amesterdebug::debug constructor "constructor for $this args=$args"
+        #init name to object name (can be overridden by arg)
+        regsub -all "::" $this "" objname
+        set partition_table $parent
+	if {$args ne "" && $args ne "{}"} {
+	    eval configure $args
+	}
+    }
+
+    destructor {
+	#::amesterdebug::debug destructor "$this destructor"
+	if {$::options(gui)} {
+	    #destroy $win
+	}
+    }
+}
+
+
+#Returns number of bytes processed
+body partition_740Q::set_bytes {bytestream j} {
+    set core_count [$partition_table cget -core_count]
+    set start_pos $j
+    puts "j=$j"
+    binary scan $bytestream "@${j}SSSccc${core_count}cccca36" phyp_fmin phyp_fmax phyp_ftarget es_policy ncores corelist id valid perfmode pad1 dps_t
+
+    set phyp_fmin [expr {$phyp_fmin & 0x0ffff}]
+    incr j 2
+    set phyp_fmax [expr {$phyp_fmax & 0x0ffff}]
+    incr j 2
+    set phyp_ftarget [expr {$phyp_ftarget & 0x0ffff}]
+    incr j 2
+    set es_policy [expr {$es_policy & 0x0ff}]
+    incr j 1
+    set ncores [expr {$ncores & 0x0ff}]
+    incr j 1
+    if {$ncores} {
+	set core_list_valid [lrange $corelist 0 [expr $ncores - 1]]
+    } else {
+	set core_list_valid {}
+    }
+    incr j $core_count
+    set id [expr {$id & 0x0ff}]
+    incr j 1
+    set valid [expr {$valid & 0x0ff}]
+    incr j 1
+    set perfmode [expr {$perfmode & 0x0ff}]
+    incr j 1
+    #At this point j = 8+(8,16,24,32)+3.  Need to add 1 to be divisable by 4. for dps_t structure.
+    # account for data structure padding (pad1)
+    incr j 1
+    
+    # Crack dps_t
+    set n [binary scan $dps_t "ISSSSSSSSSSSSScccc3" fmax_scale_factor freq_request util_speed_request pfloor_speed_request dips_speed_request thutil tlutil pfval step_up step_down sample_count_util epsilon_perc alpha_up alpha_down util_sensor_sel type soft_boundaries paddps]
+    puts "dps_t scan: n=$n dps_t len = [string length $dps_t]"
+
+    #puts "length paddps = [string length $paddps]"
+
+    set fmax_scale_factor [expr {$fmax_scale_factor & 0x0ffffffff}]
+    set freq_request [expr {$freq_request & 0x0ffff}]
+    set util_speed_request [expr {$util_speed_request & 0x0ffff}]
+    set pfloor_speed_request [expr {$pfloor_speed_request & 0x0ffff}]
+    set dips_speed_request [expr {$dips_speed_request & 0x0ffff}]
+    set thutil [expr {$thutil & 0x0ffff}]
+    set tlutil [expr {$tlutil & 0x0ffff}]
+    set pfval [expr {$pfval & 0x0ffff}]
+    set step_up [expr {$step_up & 0x0ffff}]
+    set step_down [expr {$step_down & 0x0ffff}]
+    set sample_count_util [expr {$sample_count_util & 0x0ffff}]
+    set epsilon_perc [expr {$epsilon_perc & 0x0ffff}]
+    set alpha_up [expr {$alpha_up & 0x0ffff}]
+    set alpha_down [expr {$alpha_down & 0x0ffff}]
+
+    set util_sensor_sel [expr {$util_sensor_sel & 0x0ff}]
+    set type [expr {$type & 0x0ff}]
+    set soft_boundaries [expr {$soft_boundaries & 0x0ff}]
+    
+    # account for dps_t
+    incr j 33
+    # account for dps_t padding to get to 4-byte alignment. (33+3=36)
+    incr j 3
+
+    if {$valid} {
+	puts "id=$id policy=$es_policy ncores=$ncores corelist=$core_list_valid pfmin=$phyp_fmin pfmax=$phyp_fmax ptarg=$phyp_ftarget mode=$perfmode"
+	puts "  fmax_scale_factor=$fmax_scale_factor freq_request=$freq_request util_speed_request=$util_speed_request pfloor_speed_request=$pfloor_speed_request dips_speed_request=$dips_speed_request thutil=$thutil tlutil=$tlutil pfval=$pfval step_up=$step_up step_down=$step_down sample_count_util=$sample_count_util epsilon_perc=$epsilon_perc alpha_up=$alpha_up alpha_down=$alpha_down util_sensor_sel=$util_sensor_sel type=$type soft_boundaries=$soft_boundaries"
+    }
+
+    set bytes_processed [expr {$j - $start_pos}]
+    return $bytes_processed
+}
+
+#return a binary string of the partition information for writing the partition configuration parameter
+body partition_740Q::get_bytes {} {
+    set core_count [$partition_table cget -core_count]
+    set dps_t [binary format "ISSSSSSSSSSSSScccc3" $fmax_scale_factor $freq_request $util_speed_request $pfloor_speed_request $dips_speed_request $thutil $tlutil $pfval $step_up $step_down $sample_count_util $epsilon_perc $alpha_up $alpha_down $util_sensor_sel $type $soft_boundaries $paddps]
+    set dpslen [string length $dps_t]
+    #update corelist based on core_list_valid
+    set ncores [llength $core_list_valid]
+    set corelist $core_list_valid
+    while {[llength $corelist] < $core_count} {
+	#fill corelist with an invalid core number
+	lappend corelist $core_count
+    }
+    set bytestream [binary format "SSSccc${core_count}cccca${dpslen}" $phyp_fmin $phyp_fmax $phyp_ftarget $es_policy $ncores $corelist $id $valid $perfmode $pad1 $dps_t]
+
+    return $bytestream
+}
+
+body partition_740Q::getgui {what {i_parent ""}} {
+    set _widget {}
+    set _ename [string tolower ${objname}_${what}]
+    set _wname "${i_parent}.${_ename}"
+    if {[winfo exists $_wname]} {
+	return $_wname
+    }
+
+    if {$i_parent eq ""} {toplevel $_wname}
+    switch $what {
+	phyp_fmin -
+	phyp_fmax -
+	phyp_ftarget -
+	es_policy -
+	id -
+	valid -
+	perfmode -
+	pad1 -
+	fmax_scale_factor -
+	freq_request -
+	util_speed_request -
+	pfloor_speed_request -
+	dips_speed_request -
+	thutil -
+	tlutil -
+	pfval -
+	step_up -
+	step_down -
+	sample_count_util -
+	epsilon_perc -
+	alpha_up -
+	alpha_down -
+	util_sensor_sel -
+	type -
+	soft_boundaries -
+	paddps {
+	    set _widget [entry $_wname -textvariable [scope $what] -font $::fixedfont -justify right -background white -foreground black -disabledbackground black -disabledforeground white] 
+	    #set _widget [entry $_wname -textvariable [scope $what] -width 8 -font $::fixedfont -justify right -background white -foreground black -disabledbackground black -disabledforeground white] 
+	}
+	core_list_valid {set _widget [entry $_wname -textvariable [scope $what] -width 16 -font $::fixedfont -justify right -background white -foreground black -disabledbackground black -disabledforeground white] 
+	}
+	#name {set _widget [label $_wname -text $name -anchor w -font $::fixedfont]}
+
+	default {return -code error "$this getgui: unknown item $what"}
+    }
+    return $_widget
+}
+
+
+class partition_table {
+
+    #Call partition_table::init_extension from script to add this
+    public proc init_extension {} {
+	::ame::add_constructor_hook [code ::partition_table::init_obj]
+	#set _netcs [find objects -isa netc]
+	#foreach n $_netcs {
+	#    foreach a [$n get ameclist] {
+	#	partition_table ${a}_partition_table $a
+	#    }
+	#}
+    }
+
+    public proc init_obj {parent} {
+        set host [$parent cget -host]
+	#Only works on POWER
+	if {![$host isa netc]} {return {}}
+	#Only works on AMEC 3.22 and up
+	set ame_ver_major  [$parent get ame_ver_major]
+	set ame_ver_minor [$parent get ame_ver_minor]
+	if {$ame_ver_major < 3} {
+	    ::amesterdebug::debug 1 "Cannot add partition_table to $parent -- Must be AMEC 3.22 or higher"
+	    return {}
+	} elseif {$ame_ver_major == 3} {
+	    if {$ame_ver_minor < 22} {
+		::amesterdebug::debug 1 "Cannot add partition_table to $parent -- Must be AMEC 3.22 or higher"
+		return {}
+	    } elseif {$ame_ver_minor < 90} {
+		#Note: 90 is approximate... may need adjustment.
+		partition_table_740Q ${parent}_partition_table $parent
+	    } else {
+		partition_table_760 ${parent}_partition_table $parent
+	    }
+	} elseif {$ame_ver_major >= 4} {
+		partition_table_760 ${parent}_partition_table $parent
+	}
+	return {}
+    }
+}
+    
+
+class partition_table_740Q {
+
+    #The ame component to which this sensor belongs
+    public variable amec ""
+    #The host to which this sensor belongs. Cached for convenience.
+    public variable host ""
+    #Name of object without "::"
+    public variable objname ""
+
+    public method read {}
+    public method write {}
+    public method get_partition {i}
+
+
+    public variable value_bytes {}
+    public variable value_len {}
+    public variable part_max_part {}
+    public variable part_core_len {}
+    public variable max_num_chips {}
+    public variable cpus_per_chip {}
+    public variable core_count {}
+    public variable core2part_list {}
+    public variable partition_object_list {}
+    public variable padend {}
+
+    #Should be private
+    public variable capgroupbytes {}
+    public variable bytesout {}
+    #parameter object
+    public variable part_config_update {}
+
+    #constants for 740Q
+    public variable invalid_core_group 63
+
+    #GUI stuff
+
+    #Name of GUI window
+    public variable widget ""
+    public method gui_raise {}
+    public method gui_withdraw {}
+    public method gui_update {}
+    public method gui_update_do {}
+    public method gui_refresh {}
+    public method gui_select_cols {}
+    public method gui_set_cols {list}
+    public method gui_make {}
+    public method gui_updatescrollregion {{W {}} {w {}} {h {}}}
+
+    # After that throttles updates to GUI
+    private variable gui_update_after 0
+    # Current list of parameters in GUI
+    private variable row_list_name {}
+    # List of all available parameters by name
+    private variable row_list_name_all {}
+
+    # Current list of columns in GUI
+    private variable cols_list {id es_policy type freq_request core_list_valid perfmode phyp_ftarget}
+    # List of all available columns by name
+    public variable cols_list_all {id phyp_fmin phyp_fmax phyp_ftarget es_policy core_list_valid valid perfmode pad1 fmax_scale_factor freq_request util_speed_request pfloor_speed_request dips_speed_request thutil tlutil pfval step_up step_down sample_count_util epsilon_perc alpha_up alpha_down util_sensor_sel type soft_boundaries paddps}
+    private variable window_titles
+    private variable window_elements
+
+    constructor {parent args} {
+        ::amesterdebug::debug constructor "constructor for $this parent=$parent args=$args"
+	::amesterdebug::debug partition "Creating partition table with class [$this info class]"
+        #init name to object name (can be overridden by arg)
+        regsub -all "::" $this "" objname
+        set amec $parent
+        set host [$parent cget -host]
+	if {$args ne "" && $args ne "{}"} {
+	    eval configure $args
+	}
+	set part_config_update [find objects "${amec}_part_config_update"]
+	if {$part_config_update eq ""} {
+	    return -code error "cannot find data object ${amec}_part_config_update"
+	}
+	set widget .${objname}
+	#read
+        if {$::options(gui)} {
+	    set menu [$amec get gui_function_menu]
+	    $menu add command -label "Core groups..." -command [code $this gui_raise]
+	}
+    }
+
+    destructor {
+	#::amesterdebug::debug destructor "$this destructor"
+	if {$::options(gui)} {
+	    destroy $win
+	}
+    }
+}
+
+
+body partition_table_740Q::gui_set_cols {i_list} {
+    foreach p $i_list {
+	if {[lsearch -exact $cols_list_all $p] == -1} {
+	    return -code error "Error: $this does not have column named $p"
+	}
+    }
+    set cols_list $i_list
+    gui_update    
+}
+
+
+body partition_table_740Q::gui_update_do {} {
+    if {!$::options(gui)} {return}
+
+    if {![winfo exists $widget]} {
+	return
+    }
+
+    #child is the last element put in the grid. Need to sync window update.
+    set child ""
+
+    #variables for specifying the grid
+    set row 0
+    set col 0
+
+    # unpack things in .host
+    foreach t [grid slaves ${widget}.c.s] {
+	grid remove $t
+    }
+
+    # Pack column titles
+    set row 0
+    set col 0
+
+    foreach t $cols_list  {
+	if {![info exists window_titles($t)] 
+	    || ![winfo exists $window_titles($t)]} {
+	    # make the column title
+	    set anchor e
+	    if {$t eq "name"} {set anchor w}
+	    set window_titles($t) [label $widget.c.s.title_${t} -text $t -anchor $anchor -font $::fixedfont]
+	}
+	grid $window_titles($t) -row $row -column $col -ipadx 10 -sticky news
+	set child $window_titles($t)
+	incr col
+    }
+    incr row
+
+    #Draw separator line, but only if there are statistics to display
+    set l [llength $cols_list]
+    if {$l > 0} {
+	grid ${widget}.c.s.sep -row $row -column 0 -columnspan $l -sticky news
+    }
+
+    # Add parameters to be displayed
+    incr row
+    for {set s 0} {$s < $part_max_part} {incr s} {
+	set partition [lindex $partition_object_list $s]
+	set col 0
+	foreach {t}  $cols_list  {
+	    if {![info exists window_elements($s,$t)] 
+		|| ![winfo exists $window_elements($s,$t)]} {
+		#make the element
+		set e [$partition getgui $t ${widget}.c.s]
+		set window_elements($s,$t) $e
+	    }
+	    grid $window_elements($s,$t) -row $row -column $col -ipadx 10 -sticky news
+	    set child $window_elements($s,$t)
+	    incr col
+        }
+	incr row
+    }
+
+    #Make grid stretchable
+    set size [grid size ${widget}.c.s]
+    set rm [lindex $size 1]
+    set cm [lindex $size 0]
+    for {set row 0} {$row < $rm} {incr row} {
+	grid rowconfigure ${widget}.c.s $row -weight 1
+    }
+    for {set col 0} {$col < [expr $cm - 1]} {incr col} {
+	grid columnconfigure ${widget}.c.s $col -weight 1
+    }
+
+    if {[wm state $widget] eq "normal" && $child ne ""} {
+	#puts "child is $child"
+	tkwait visibility $child
+    } else {
+	#puts "no child"
+    }
+
+    set bbox [grid bbox ${widget}.c.s 1 2]
+    set inc [lindex $bbox 3]
+    set incw [lindex $bbox 2]
+    set width [winfo reqwidth ${widget}.c.s]
+    set height [winfo reqheight ${widget}.c.s]
+
+    ${widget}.c config -scrollregion "0 0 $width $height"
+    ${widget}.c config -yscrollincrement $inc
+    ${widget}.c config -xscrollincrement $incw
+
+    # grab updated values
+    gui_refresh
+}
+
+body partition_table_740Q::gui_refresh {} {
+    read
+}
+
+body partition_table_740Q::gui_update {} {
+    after cancel $gui_update_after
+    set gui_update_after [after 500 [code $this gui_update_do] ]
+}
+
+body partition_table_740Q::gui_select_cols {} {
+    multiselect \#auto [scope cols_list_all] [scope cols_list] [code $this gui_update]
+}
+
+body partition_table_740Q::gui_raise {} {
+    if {[winfo exists $widget]} {
+	wm deiconify $widget
+    } else {
+	gui_make
+	read
+	gui_update
+    }
+    focus $widget
+    raise $widget
+    wm deiconify $widget
+}
+
+body partition_table_740Q::gui_withdraw {} {
+    if {[winfo exists $widget]} {
+	wm withdraw $widget
+    }
+}
+
+
+
+body partition_table_740Q::gui_make {} {
+    if {[winfo exists $widget]} {
+	return
+    }
+
+    toplevel $widget
+    #wm withdraw $widget
+    wm protocol $widget WM_DELETE_WINDOW [code $this gui_withdraw]
+
+    frame ${widget}.bbar -relief raised -bd 2
+    button ${widget}.bbar.selcols -text "Select columns" -command [code $this gui_select_cols]
+    button ${widget}.bbar.refresh -text "Refresh values" -command [code $this gui_refresh]
+    button ${widget}.bbar.write -text "Write values" -command [code $this write]
+    pack ${widget}.bbar.selcols ${widget}.bbar.refresh ${widget}.bbar.write -side left
+    
+    #frame for parameters
+    canvas ${widget}.c -yscrollcommand [list ${widget}.yscroll set] -xscrollcommand [list ${widget}.xscroll set]
+    frame ${widget}.c.s
+    scrollbar ${widget}.yscroll -orient vertical -command [list ${widget}.c yview]
+    scrollbar ${widget}.xscroll -orient horizontal -command [list ${widget}.c xview]
+    ${widget}.c create window 0 0 -anchor nw -window ${widget}.c.s
+    
+    frame ${widget}.c.s.sep -bg black -height 2
+    
+    wm title ${widget} "$amec partition table"
+    wm resizable ${widget} 1 1
+    pack ${widget}.bbar -side top -fill x
+    pack ${widget}.yscroll -side right -fill y
+    pack ${widget}.xscroll -side bottom -fill x
+    pack ${widget}.c -side left -fill both -expand true
+    
+    #Detect any changes in the size of the gridded frame so that the
+    #canvas scrollbars can be updated and show the whole frame
+    bind ${widget}.c.s <Configure> "$this gui_updatescrollregion %W %w %h"    
+    
+}
+
+body partition_table_740Q::gui_updatescrollregion {{W {}} {w {}} {h {}}} {
+    #puts "$W is now $w $h"
+    ${widget}.c config -scrollregion [list 0 0 [winfo reqwidth ${widget}.c.s] [winfo reqheight ${widget}.c.s]]
+}
+
+body partition_table_740Q::read {} {
+    
+    set return_value ""
+    set value_bytes [binary format H* [::${amec}_part_config_update read]]
+    set value_len [string length $value_bytes]
+    set part_max_part [::${amec}_part_max_part read]
+    set part_core_len [::${amec}_part_len_core read]
+    set max_num_chips [::${amec}_common_max_num_chips read]
+    set cpus_per_chip [::${amec}_common_cpus_per_chip read]
+    set core_count [expr {$max_num_chips * $cpus_per_chip}]
+
+    ::amesterdebug::debug partition "partition table bytes"
+    binary scan $value_bytes "H*" all
+    ::amesterdebug::debug partition "$all"
+    
+    #crack the partition structure
+    set j 0
+    binary scan $value_bytes "@${j}S${core_count}" core2part_list
+    puts "core2part_list = $core2part_list"
+    incr j [expr {$core_count * 2}]
+    #binary scan $value_bytes "@${j}S" part_count
+    #puts "part_count = $part_count"
+    #incr j 2
+    #binary scan $value_bytes "@${j}S${part_max_part}" part_sorted
+    #puts "part_sorted = $part_sorted"
+    #incr j [expr {$part_max_part * 2}]
+
+    for {set i 0} {$i < $part_max_part} {incr i} {
+	if {$i < [llength $partition_object_list]} {
+	    set partition [lindex $partition_object_list $i]
+	} else {
+	    set partition [partition_740Q ::${objname}_part_${i} $this]
+	    lappend partition_object_list $partition
+	}
+	set bytes_processed [$partition set_bytes $value_bytes $j]
+	puts "bytes_processed = $bytes_processed"
+	incr j $bytes_processed
+	
+    }
+
+    #read capping groups
+    puts "capping groups"
+    binary scan $value_bytes "@${j}a*" capgroupbytes
+
+    for {set i 0} {$i < 5} {incr i} {
+	binary scan $value_bytes "@${j}SScc${core_count}" fmin fmax ncores corelist
+	set fmin [expr {$fmin & 0x0ffff}]
+	set fmax [expr {$fmax & 0x0ffff}]
+	if {$ncores} {
+	    set core_list_valid [lrange $corelist 0 [expr $ncores - 1]]
+	} else {
+	    set core_list_valid "no cores"
+	}
+	incr j $core_count
+	incr j 5
+	#account for padding of data structures
+	incr j 1 
+	puts "\#${i} fmin=$fmin fmax=$fmax ncores=$ncores corelist=$core_list_valid"
+    }
+    binary scan $value_bytes "@${j}a*" padend
+    binary scan $padend "H*" padbytes
+    puts "padding in hex: $padbytes"
+    set padlen [string length $padend]
+    puts "padding was $padlen bytes"
+    incr j $padlen
+    set strlen [string length $value_bytes]
+    puts "j=$j strlen=$strlen"
+    if {$j != $strlen} {puts "WARN: not all bytes processed"}
+}
+
+
+body partition_table_740Q::write {} {
+    set bytestream {}
+    if {[find object ${amec}_part_config_update] eq ""} {
+	puts "cannot find data object ${amec}_part_config_update"
+	return
+    }
+    set return_value ""
+    #The following should be setup during initial read
+    #set part_max_part [::${amec}_part_max_part read]
+    #set part_core_len [::${amec}_part_len_core read]
+    #set max_num_chips [::${amec}_common_max_num_chips read]
+    #set cpus_per_chip [::${amec}_common_cpus_per_chip read]
+    #set core_count [expr {$max_num_chips * $cpus_per_chip}]
+
+    #init bytes to stream out
+    set bytesout {}
+
+    #update the core2part_list
+    #Only this routine should write to core2part_list
+    set core2part_list {}
+    #initialize to cores have no owners
+    for {set i 0} {$i < $core_count} {incr i} {
+	lappend core2part_list $invalid_core_group
+    }
+    #loop over all partitions and add their cores
+    #if a core is already owned, then two paritions in the table
+    #probably are attempting to own it. This is an error.
+    for {set i 0} {$i < $part_max_part} {incr i} {
+	set partition [lindex $partition_object_list $i]
+	set id [$partition cget -id]
+	set core_list_valid [$partition cget -core_list_valid]
+	foreach c $core_list_valid {
+	    set curr_owner [lindex $core2part_list $c]
+	    if {$curr_owner != $invalid_core_group} {
+		puts "ERROR: core $c is owned by parition id = $curr_owner and $id"
+		return
+	    } else {
+		set core2part_list [lreplace $core2part_list $c $c $id]
+	    }
+	}
+    }        
+    append bytesout [binary format "S${core_count}" $core2part_list]
+
+    #Partition bytes
+    for {set i 0} {$i < $part_max_part} {incr i} {
+	set partition [lindex $partition_object_list $i]
+	set bytes [$partition get_bytes]
+	append bytesout $bytes
+    }
+
+    #Capping groups
+    #Just need to write the correct number of bytes here, since TPMD firmware will update
+    #this part of the data structure based on the core groups.
+    append bytesout $capgroupbytes
+
+    set bytesoutlen [string length $bytesout]
+    set parmlen [$part_config_update cget -size]
+    binary scan $bytesout "H*" hex
+    puts "bytesoutlen = $bytesoutlen  parmlen = $parmlen"
+    if {[catch {$part_config_update write $hex} result]} {
+	puts $result
+    }
+}
+
+# This command should be preceeded by a read to get the
+# most up to date table
+body partition_table_740Q::get_partition {i} {
+    set partition [lindex $partition_object_list $i]
+}
+
+#++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++#
+
+class partition_760 {
+    inherit partition_740Q
+
+    public variable follow_sysmode {}
+    public variable thd_util_scale {}
+    public variable pad2 {}
+
+    # List of all available columns by name
+
+    public method set_bytes {bytes index}
+    public method get_bytes {}
+
+    public method getgui {what {i_parent ""}}
+
+    constructor {parent args} {
+	::partition_740Q::constructor $parent
+    } {
+	eval configure $args
+    }
+
+
+}
+
+#Returns number of bytes processed
+body partition_760::set_bytes {bytestream j} {
+    set core_count [$partition_table cget -core_count]
+    set start_pos $j
+    puts "partition start = byte $j"
+    binary scan $bytestream "@${j}SSSccc${core_count}cccca36cc3" phyp_fmin phyp_fmax phyp_ftarget es_policy ncores corelist id valid perfmode pad1 dps_t follow_sysmode pad2
+
+    set phyp_fmin [expr {$phyp_fmin & 0x0ffff}]
+    incr j 2
+    set phyp_fmax [expr {$phyp_fmax & 0x0ffff}]
+    incr j 2
+    set phyp_ftarget [expr {$phyp_ftarget & 0x0ffff}]
+    incr j 2
+    set es_policy [expr {$es_policy & 0x0ff}]
+    incr j 1
+    set ncores [expr {$ncores & 0x0ff}]
+    incr j 1
+    if {$ncores} {
+	set core_list_valid [lrange $corelist 0 [expr $ncores - 1]]
+    } else {
+	set core_list_valid {}
+    }
+    incr j $core_count
+    set id [expr {$id & 0x0ff}]
+    incr j 1
+    set valid [expr {$valid & 0x0ff}]
+    incr j 1
+    set perfmode [expr {$perfmode & 0x0ff}]
+    incr j 1
+    #At this point j = 8+(8,16,24,32)+3.  Need to add 1 to be divisable by 4. for dps_t structure.
+    # account for data structure padding (pad1)
+    set pad1 [expr {$perfmode & 0x0ff}]
+    if {$pad1 != 0} {::amesterdebug::debug 1 "pad1 was $pad1"}
+    incr j 1
+    
+    # Crack dps_t
+    set n [binary scan $dps_t "ISSSSSSSSSSSSSccccc2" fmax_scale_factor freq_request util_speed_request pfloor_speed_request dips_speed_request thutil tlutil pfval step_up step_down sample_count_util epsilon_perc alpha_up alpha_down util_sensor_sel type thd_util_scale soft_boundaries paddps]
+    puts "dps_t scan: n=$n dps_t len = [string length $dps_t]"
+
+    #puts "length paddps = [string length $paddps]"
+
+    set fmax_scale_factor [expr {$fmax_scale_factor & 0x0ffffffff}]
+    set freq_request [expr {$freq_request & 0x0ffff}]
+    set util_speed_request [expr {$util_speed_request & 0x0ffff}]
+    set pfloor_speed_request [expr {$pfloor_speed_request & 0x0ffff}]
+    set dips_speed_request [expr {$dips_speed_request & 0x0ffff}]
+    set thutil [expr {$thutil & 0x0ffff}]
+    set tlutil [expr {$tlutil & 0x0ffff}]
+    set pfval [expr {$pfval & 0x0ffff}]
+    set step_up [expr {$step_up & 0x0ffff}]
+    set step_down [expr {$step_down & 0x0ffff}]
+    set sample_count_util [expr {$sample_count_util & 0x0ffff}]
+    set epsilon_perc [expr {$epsilon_perc & 0x0ffff}]
+    set alpha_up [expr {$alpha_up & 0x0ffff}]
+    set alpha_down [expr {$alpha_down & 0x0ffff}]
+
+    set util_sensor_sel [expr {$util_sensor_sel & 0x0ff}]
+    set type [expr {$type & 0x0ff}]
+    set soft_boundaries [expr {$soft_boundaries & 0x0ff}]
+    set thd_util_scale [expr {$thd_util_scale & 0xff}]
+
+    # account for dps_t
+    incr j 34
+    # account for dps_t padding to get to 4-byte alignment. (34+2=36)
+    incr j 2
+
+    if {$valid} {
+	puts "id=$id policy=$es_policy ncores=$ncores corelist=$core_list_valid pfmin=$phyp_fmin pfmax=$phyp_fmax ptarg=$phyp_ftarget mode=$perfmode pad1=$pad1 follow_sysmode=$follow_sysmode pad2=$pad2"
+	puts "  fmax_scale_factor=$fmax_scale_factor freq_request=$freq_request util_speed_request=$util_speed_request pfloor_speed_request=$pfloor_speed_request dips_speed_request=$dips_speed_request thutil=$thutil tlutil=$tlutil pfval=$pfval step_up=$step_up step_down=$step_down sample_count_util=$sample_count_util epsilon_perc=$epsilon_perc alpha_up=$alpha_up alpha_down=$alpha_down util_sensor_sel=$util_sensor_sel type=$type thd_util_scale=$thd_util_scale soft_boundaries=$soft_boundaries paddps=$paddps "
+    }
+
+    #account for follow_sysmode
+    incr j 1
+    #account for pad2
+    incr j 3
+
+    set bytes_processed [expr {$j - $start_pos}]
+    return $bytes_processed
+}
+
+#return a binary string of the partition information for writing the partition configuration parameter
+body partition_760::get_bytes {} {
+    set core_count [$partition_table cget -core_count]
+    set dps_t [binary format "ISSSSSSSSSSSSSccccc2" $fmax_scale_factor $freq_request $util_speed_request $pfloor_speed_request $dips_speed_request $thutil $tlutil $pfval $step_up $step_down $sample_count_util $epsilon_perc $alpha_up $alpha_down $util_sensor_sel $type $thd_util_scale $soft_boundaries $paddps]
+    set dpslen [string length $dps_t]
+    #update corelist based on core_list_valid
+    set ncores [llength $core_list_valid]
+    set corelist $core_list_valid
+    while {[llength $corelist] < $core_count} {
+	#fill corelist with an invalid core number
+	lappend corelist $core_count
+    }
+    set bytestream [binary format "SSSccc${core_count}cccca${dpslen}cc3" $phyp_fmin $phyp_fmax $phyp_ftarget $es_policy $ncores $corelist $id $valid $perfmode $pad1 $dps_t $follow_sysmode $pad2]
+
+    return $bytestream
+}
+
+body partition_760::getgui {what {i_parent ""}} {
+    set _widget {}
+    set _ename [string tolower ${objname}_${what}]
+    set _wname "${i_parent}.${_ename}"
+    if {[winfo exists $_wname]} {
+	return $_wname
+    }
+
+    if {$i_parent eq ""} {toplevel $_wname}
+    switch $what {
+	phyp_fmin -
+	phyp_fmax -
+	phyp_ftarget -
+	es_policy -
+	id -
+	valid -
+	perfmode -
+	pad1 -
+	fmax_scale_factor -
+	freq_request -
+	util_speed_request -
+	pfloor_speed_request -
+	dips_speed_request -
+	thutil -
+	tlutil -
+	pfval -
+	step_up -
+	step_down -
+	sample_count_util -
+	epsilon_perc -
+	alpha_up -
+	alpha_down -
+	util_sensor_sel -
+	type -
+	thd_util_scale -
+	soft_boundaries -
+	paddps -
+	follow_sysmode -
+	pad2 {
+	    set _widget [entry $_wname -textvariable [scope $what] -font $::fixedfont -justify right -background white -foreground black -disabledbackground black -disabledforeground white] 
+	    #set _widget [entry $_wname -textvariable [scope $what] -width 8 -font $::fixedfont -justify right -background white -foreground black -disabledbackground black -disabledforeground white] 
+	}
+	core_list_valid {set _widget [entry $_wname -textvariable [scope $what] -width 16 -font $::fixedfont -justify right -background white -foreground black -disabledbackground black -disabledforeground white] 
+	}
+	#name {set _widget [label $_wname -text $name -anchor w -font $::fixedfont]}
+
+	default {return -code error "$this getgui: unknown item $what"}
+    }
+    return $_widget
+}
+
+
+
+class partition_table_760 {
+    inherit partition_table_740Q
+    constructor {parent args} {
+	::partition_table_740Q::constructor $parent
+	set cols_list_all {phyp_fmin phyp_fmax phyp_ftarget es_policy core_list_valid id valid perfmode pad1 fmax_scale_factor freq_request util_speed_request pfloor_speed_request dips_speed_request thutil tlutil pfval step_up step_down sample_count_util epsilon_perc alpha_up alpha_down util_sensor_sel type thd_util_scale soft_boundaries paddps follow_sysmode pad2}
+    } {
+	eval configure $args
+    }
+
+    public method read {}
+}
+
+body partition_table_760::read {} {
+    
+    set return_value ""
+    set value_bytes [binary format H* [::${amec}_part_config_update read]]
+    set value_len [string length $value_bytes]
+    set part_max_part [::${amec}_part_max_part read]
+    set part_core_len [::${amec}_part_len_core read]
+    set max_num_chips [::${amec}_common_max_num_chips read]
+    set cpus_per_chip [::${amec}_common_cpus_per_chip read]
+    set core_count [expr {$max_num_chips * $cpus_per_chip}]
+
+    ::amesterdebug::debug partition "partition table bytes"
+    binary scan $value_bytes "H*" all
+    ::amesterdebug::debug partition "$all"
+    
+    #crack the partition structure
+    set j 0
+    binary scan $value_bytes "@${j}S${core_count}" core2part_list
+    puts "core2part_list = $core2part_list"
+    incr j [expr {$core_count * 2}]
+    #binary scan $value_bytes "@${j}S" part_count
+    #puts "part_count = $part_count"
+    #incr j 2
+    #binary scan $value_bytes "@${j}S${part_max_part}" part_sorted
+    #puts "part_sorted = $part_sorted"
+    #incr j [expr {$part_max_part * 2}]
+
+    for {set i 0} {$i < $part_max_part} {incr i} {
+	if {$i < [llength $partition_object_list]} {
+	    set partition [lindex $partition_object_list $i]
+	} else {
+	    set partition [partition_760 ::${objname}_part_${i} $this]
+	    lappend partition_object_list $partition
+	}
+	set bytes_processed [$partition set_bytes $value_bytes $j]
+	puts "bytes_processed = $bytes_processed"
+	incr j $bytes_processed
+	
+    }
+
+    #read capping groups
+    puts "capping groups"
+    binary scan $value_bytes "@${j}a*" capgroupbytes
+
+    for {set i 0} {$i < 5} {incr i} {
+	binary scan $value_bytes "@${j}SScc${core_count}" fmin fmax ncores corelist
+	set fmin [expr {$fmin & 0x0ffff}]
+	set fmax [expr {$fmax & 0x0ffff}]
+	if {$ncores} {
+	    set core_list_valid [lrange $corelist 0 [expr $ncores - 1]]
+	} else {
+	    set core_list_valid "no cores"
+	}
+	incr j $core_count
+	incr j 5
+	#account for padding of data structures
+	incr j 1 
+	puts "\#${i} fmin=$fmin fmax=$fmax ncores=$ncores corelist=$core_list_valid"
+    }
+    binary scan $value_bytes "@${j}a*" padend
+    binary scan $padend "H*" padbytes
+    puts "padding in hex: $padbytes"
+    set padlen [string length $padend]
+    puts "padding was $padlen bytes"
+    incr j $padlen
+    set strlen [string length $value_bytes]
+    puts "j=$j strlen=$strlen"
+    if {$j != $strlen} {puts "WARN: not all bytes processed"}
+}
+
+::partition_table::init_extension
+

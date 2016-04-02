@@ -1,0 +1,408 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+class sensor_2_27 {
+    inherit sensor
+
+    #The ame component to which this sensor belongs
+    public variable amec ""
+    #The host to which this sensor belongs. Cached for convenience.
+    public variable host ""
+
+    #Name of object without "::"
+    public variable objname ""
+
+    #Sensor data
+    public variable sensorname ""
+    public variable sensornum
+    public variable freq 0 {set g_freq "$freq Hz"}
+    public variable u_value
+    public variable hist 8 {
+	set hist_ro $hist
+    }
+    protected variable hist_ro
+    public variable avg 0
+    public variable scalefactor 0 {    
+	if {$scalefactor < 1.0} {
+	    set fstring "%\#.5g %s"
+	} else {
+	    set fstring "%.5g %s"
+	}
+    }
+    public variable localtime 0
+    public variable timestamp 0
+    public variable timestamp_min 0
+    public variable timestamp_max 0
+    public variable value_acc 0
+    public variable value 0
+    public variable min 0
+    public variable max 0
+    public variable statusreg 0
+    public variable updates 0
+    public variable datatype "uint16"
+
+    public variable default_columns {sensorname sensornum u_value hist scalefactor localtime timestamp updates datatype statusreg}
+
+    public variable update_period 1000
+    public variable data_after 0
+
+    public variable fstring ""
+
+    #nearest point info
+    protected variable nearname ""
+    protected variable nearx ""
+    protected variable neary ""
+    protected variable nearindex ""
+    protected variable neardist ""
+    protected variable nearwidth 9
+    protected method update_nearest {window x y}
+
+    #Graphing
+    public variable legendfont {-family courier -size 14}
+    public variable axisfont {-family courier -size 14}
+    public variable tickfont {-family courier -size 14}
+    public variable markerfont {-family courier -size 10}
+    public variable graphtitlefont {-family courier -size 14 -weight bold}
+    public variable fixedfont {-family courier -size 14}
+    public variable fixedfontbold {-family courier -size 14 -weight bold}
+
+    public variable valuenumwidth 9
+    public variable legendpadx 0
+    public variable legendpady 0
+    public variable legendipadx 0
+    public variable legendipady 0
+    public variable legendanchor nw
+    public variable plotpadx 0
+    public variable plotpady 1
+
+    #Sensor data
+    private method sensor_update {status databytes}
+    public method sensor_data {}
+    public method sensor_data_sync {}
+    public method sensor_data_callback {status databytes}
+    public method reset_sensor {}
+
+    #GUI variables (formatted strings with values and units)
+    protected variable g_value ""
+    protected variable g_value_acc ""
+    protected variable g_min ""
+    protected variable g_max ""
+    protected variable g_avg ""
+    protected variable g_freq ""
+    public method make_gui {}
+    public method make_graph {{parent {}}}
+    protected common sensor_stats_anchor
+    set sensor_stats_anchor(addr) w
+    set sensor_stats_anchor(port) w
+    set sensor_stats_anchor(status) w
+    set sensor_stats_anchor(link) w
+    set sensor_stats_anchor(name) w
+    set sensor_stats_anchor(sensorname) w
+
+    protected method hist_value_validate {}
+    protected method hist_value_invalid {}
+
+    public method getgui {what {i_parent ""}}
+
+    public method get {what args}
+    public method wait {args}
+
+    constructor {parent args} {
+        ::amesterdebug::debug constructor "constructor for $this parent=$parent args=$args"
+        #init name to object name (can be overridden by arg)
+        regsub -all "::" $this "" objname
+        set amec $parent
+        set host [$parent cget -host]
+	if {$args ne "" && $args ne "{}"} {
+	    eval configure $args
+	}
+
+	if {$::options(gui)} {
+	    vector create ::v_value_${objname}
+	    vector create ::v_timestamp_${objname}
+	}
+
+        #if {$update_budget_after == 0} {update_budget_every_1_second}
+        if {$::options(gui)} {make_gui}
+    }
+
+    destructor {
+	#::amesterdebug::debug destructor "$this destructor"
+        after cancel $data_after $hist_after
+	$amec sensor_window_delete $this
+	if {$::options(gui)} {
+	    destroy .graph_${objname} .histograph_${objname}_${sensornum}
+	}
+    }
+}
+
+body sensor_2_27::make_gui {} {
+    ::amesterdebug::debug gui "$this make_gui"
+    #Set simple statistics
+    #Generally, this is a list of the sensor instance variables
+    set label_list $default_columns 
+    foreach {key}  $label_list  {
+        $amec sensor_window_add $key $key
+    }
+    #Set statistics that are formatted strings
+    foreach {key} {value value_acc min max avg freq } {
+        $amec sensor_window_add $key $key
+    }
+    #Set elements that are not labels
+    $amec sensor_window_add graph
+}
+
+body sensor_2_27::getgui {what {i_parent ""}} {
+    ::amesterdebug::debug gui "$this getgui"
+    set _widget {}
+    set _ename [string tolower ${objname}_${what}]
+    set _wname "${i_parent}.${_ename}"
+    if {[winfo exists $_wname]} {
+	return $_wname
+    }
+
+    if {![info exists sensor_stats_anchor($what)]} {
+	set anchor e
+    } else {
+	set anchor $sensor_stats_anchor($what)
+    }
+
+    if {$i_parent eq ""} {toplevel $_wname}
+    switch $what {
+	sensorname -
+	sensornum -
+	u_value -
+	scalefactor -
+	localtime -
+	timestamp -
+	updates -
+	datatype -
+	statusreg {
+	    set _widget [label $_wname -textvariable [scope $what] -anchor $anchor -font $fixedfont]
+	}
+	value -
+	value_acc -
+	min -
+	max -
+	avg -
+	freq {
+	    set _widget [label $_wname -textvariable [scope g_$what] -anchor $anchor -width 16 -font $fixedfont]	
+	}
+	graph {
+	    set _widget [button $_wname -text Graph -command [code $this make_graph]]
+	}
+	hist {
+	    set _widget [entry $_wname -textvariable [scope hist_ro] -width 6 -font $fixedfont -justify right -background white -foreground black]
+	    bind $_widget <Return> [code $this hist_value_validate]
+	    bind $_widget <Tab> [code $this hist_value_validate] 
+	}
+	default {return -code error "$this getgui: unknown item $what"}
+    }
+    return $_widget
+}
+
+body sensor_2_27::make_graph {{parent {}}} {
+    set winname "${parent}.graph_${objname}"
+    # if window exists, raise it
+    if {[winfo exists $winname]} {
+        focus $winname
+        raise $winname
+	wm deiconify $winname
+        return
+    }
+
+    if {$parent eq {}} {
+	toplevel $winname
+	wm title $winname "[$host cget -name] $sensorname graph"
+    } else {
+	frame $winname
+    }
+
+    frame $winname.g
+    stripchart $winname.g.plot -plotbackground white -title $sensorname  -font $graphtitlefont -plotpadx $plotpadx -plotpady $plotpady
+    $winname.g.plot axis configure y -min 0  -title $u_value  -subdivisions 5 -tickfont $tickfont -titlefont $axisfont  -loose 1
+    $winname.g.plot axis configure x -title "Time (s)" -loose 0  -shiftby 100 -tickfont $tickfont -titlefont $axisfont
+    global v_value_${objname}
+    global v_timestamp_${objname}
+    $winname.g.plot element create value -color black  -ydata v_value_${objname} -xdata v_timestamp_${objname} -label $sensorname -pixels 0 -linewidth 3
+    $winname.g.plot legend configure -hide 1 -font $legendfont -padx $legendpadx -pady $legendpady -ipadx $legendipadx -ipady $legendipady -anchor $legendanchor
+
+    $winname.g.plot grid on
+    $winname.g.plot marker create line -outline red -under 1 -name high -coords {0 0 0 0} -linewidth 3
+    $winname.g.plot marker create line -outline darkgreen -under 1 -name low -coords {0 0 0 0} -linewidth 3
+    pack $winname.g.plot -side left -expand yes -fill both
+    pack $winname.g -side top -expand yes -fill both
+
+    #Remove since zooming segfaults on some kbskit builds
+    Rbc_ZoomStack $winname.g.plot
+    Rbc_Crosshairs $winname.g.plot
+    Rbc_ActiveLegend $winname.g.plot
+    Rbc_PrintKey $winname.g.plot
+    Rbc_ClosestPoint $winname.g.plot
+
+    return $winname
+}
+
+
+body sensor_2_27::update_nearest {window x y} {
+    #Find out which trace mouse is near
+    $window element closest $x $y valuearray
+
+    #Store the info
+    if {$valuearray(name) eq ""} {
+        set nearname ""
+        set nearx ""
+        set neary ""
+        set nearindex ""
+        set neardist ""
+    } else {
+        set nearname [format "%-9s" $valuearray(name)]
+        if {[string length $valuearray(x)] <= 9} {
+            set nearx $valuearray(x)
+        } else {
+            set nearx [format "%-9.5g" $valuearray(x)]
+        }
+        if {[string length $valuearray(y)] <= 9} {
+            set neary $valuearray(y)
+        } else {
+            set neary [format "%-9g" $valuearray(y)]
+        }
+        set nearindex [format "%-9i" $valuearray(index)]
+        set neardist [format "%-9.3f" $valuearray(dist)]
+    }
+}
+
+
+# Shared method to process IPMI response and update the sensor fields.
+body sensor_2_27::sensor_update {status databytes} {
+    if {$status != 0} {return}
+
+    # Record local time of new data in seconds
+    set localtime [expr {([clock clicks -milliseconds] - $::start_time)/1000.0}]
+
+    # Process data
+    
+    switch $datatype {
+        uint16 {
+            set n [binary scan $databytes "IIWSSSS" _timestamp _updates _value_acc _value _min _max statusreg]
+            
+            set timestamp [expr {$_timestamp & 0xffffffff}]
+            set updates [expr {$_updates & 0xffffffff}]
+            set value_acc [expr {($_value_acc & 0xffffffffffffffff) * $scalefactor}]
+            set value [expr {($_value & 0xffff) * $scalefactor}]
+            set min [expr {($_min & 0xffff) * $scalefactor}]
+            set max [expr {($_max & 0xffff) * $scalefactor}]
+        }
+        default {
+            return -code error "ERROR: $this has unknown datatype = $datatype. Cannot update."
+        }
+    }
+    
+    #After sensor value is updated, update GUI, and user scripts
+
+    #Nice values for display
+    set g_value [format $fstring $value $u_value]
+    set g_value_acc [format $fstring $value_acc $u_value]
+    set g_max [format $fstring $max $u_value]
+    set g_min [format $fstring $min $u_value]
+
+    if {$::options(gui)} {
+	#update vectors in graph
+	::v_value_${objname} dup v
+	::v_timestamp_${objname} dup t
+	
+	set d [expr {[::v_value_${objname} length] - $hist }]
+	if {$d > 0} {
+	    v set [v range $d end]
+	    t set [t range $d end]
+	}
+	v append $value
+	t append $localtime
+	
+	# NOTE: setting vectors will update any graphs automatically
+	v dup ::v_value_${objname}
+	t dup ::v_timestamp_${objname}
+	
+	set avg [vector expr {mean(v)}]
+	set g_avg [format $fstring $avg $u_value]
+    }
+	
+    # Process any user commands on this data
+    if {$::new_data_callback ne ""} {
+        catch {eval $::new_data_callback $this} result
+        if {$result != ""} {
+            bgerror "sensor_new_data: $result"
+        }
+    }
+}
+
+# Sensor data
+#
+# This function is its own callback.  (It initiates itself)
+#
+#
+body sensor_2_27::sensor_data_callback { status databytes} {
+    #::amesterdebug::debug sensor "$this sensor_data_callback status=$status"
+    sensor_update $status $databytes
+    #Regardless of error.  Try to get another value. Host may have been unavailable.
+    if {[$host isa localhost] || [$host isa emtagent]} {
+        # Request more data after 1 second. So we don't influence 
+	# power consumption on localhost too much.
+        set data_after [after $update_period [list $amec sensor_watch_enque $this ]]
+    } else {
+	$amec sensor_watch_enque $this
+    }
+    return
+}
+
+body sensor_2_27::sensor_data {} {
+    $amec sensor_watch_enque $sensornum
+    return
+}
+
+#Update the sensor immediately
+body sensor_2_27::sensor_data_sync {} {
+    ::amesterdebug::debug sensor "$this sensor_data_sync"
+    set result [$amec send_sync 3a 3c [binary format "H2S" "06" $sensornum]]
+    sensor_update [lindex $result 0] [lindex $result 1]
+}
+
+
+body sensor_2_27::get {what args} {
+    switch $what {
+        default {return -code error "Invalid arguement for sensor_2_27::get : $what $args"}
+    }
+}
+
+body sensor_2_27::wait {args} {
+    switch $args {
+        value {::vwait [scope updates]}
+        init {if {$updates == 0} {::vwait [scope updates]}}
+        default {::vwait [scope updates]}
+    }
+}
+
+
+body sensor_2_27::reset_sensor { } {
+    ::amesterdebug::debug sensor "$this sending synchronous reset for sensor $sensornum"
+    set result [$amec send_sync 3a 3c [binary format "cS" 4 $sensornum]]
+    ::amesterdebug::debug sensor "  Got result = $result for the reset command"
+}
+
+
+body sensor_2_27::hist_value_validate {} {
+    #avoid divide by 0 and other problems
+    if {![string is integer -strict $hist_ro]} {hist_value_invalid}
+    if {$hist_ro < 1} {hist_value_invalid}
+    if {$hist_ro eq ""} {hist_value_invalid}
+    set hist $hist_ro
+    return 1
+}
+
+body sensor_2_27::hist_value_invalid {} {
+    set hist_ro $hist
+    #if {[winfo exists $window]} {
+    #after idle [list eval $window config -validate $valid]
+    #}
+}

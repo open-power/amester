@@ -1,0 +1,2187 @@
+User Manual for Automated Measurement of Systems for Temperature and
+Energy Reporting
+(C) Copyright IBM Corporation 2011, 2016
+
+Updated April 1, 2016 for version 7.0
+
+
+--------------------------
+Introduction
+
+This manual describes how to use Automated Measurement of Systems for
+Temperature and Energy Reporting (AMESTER) and extend it for your own
+purposes. This tool provides 1) robust network connectivity to
+remotely monitor systems, 2) timely collection of data, 3) a command
+line interface to access AME firmware commands, and 4) visual feedback
+of the AME firmware.
+
+AMESTER is written entirely in [incr Tcl] for fast prototyping of
+power management algorithms and for portability.  The Tk graphics
+library allow for easy visualization of data using stripcharts in the
+BLT library.  Today, AMESTER runs on x86_64 Linux systems. In
+theory it could be ported easily to any system that provides the
+Tcl/Tk environment and associated libraries.
+
+Throughout this document, the Automated Measurement of Systems for
+Temperature and Energy Reporting tool will be referred to by the
+acronym "AMESTER".
+
+
+--------------------------
+History
+
+The AME project (pronounced "aim") started at IBM Research in Austin
+in 2004.  AME stands for Autonomic Management of Energy and the
+project goals are to run the server at its highest performance level
+within a specified power and temperature budget.  The primary way to
+do this is through feedback control of the server's power consumption.
+One of the initial results of the project was an on-board power
+measurement circuit that could measure server-level power
+consumption. This circuit and the firmware that monitored it were
+initially provided in IBM BladeCenter server blades.  This circuit is
+sometimes called the "AME circuit" and its firmware component is
+called "AMEC" (AME Component).
+
+Automated Measurement of Systems for Temperature and Energy Reporting
+(AMESTER) is a tool for investigating power management in a cluster of
+servers.  Given that the initial AME circuit was prototyped in
+BladeCenter, the tool was originally designed to study and prototype
+power management algorithms that could be placed in the BladeCenter
+Management Module (MM).  The initial BladeCenter product can be viewed
+as a cluster of 14 blade servers.  AMESTER is run from a remote machine
+and passes control commands through the BladeCenter MM to each blade
+it monitors.  The service processor executes the commands and returns
+requested data.
+
+--------------------------
+Obtaining the software
+
+The code respository is https://github.com/open-power/amester
+
+--------------------------
+Learning about [incr Tcl/Tk]
+
+The following websites have information on Tcl and incr Tcl.
+
+    http://www.tcl.tk
+    http://incrtcl.sourceforge.net/itcl
+
+
+--------------------------
+Notation used in this document
+
+{} denotes an optional parameter.
+<> denotes an optional file pathname.
+
+
+--------------------------
+Compatibility
+
+AMESTER is known to work with the following systems:
+
+  JS21 8844 blade server (PowerPC 970) (AME API 2.8 only)
+  HS20 8843 blade server (Intel)  (AME API 2.12)
+  LS20 8850 blade server (AMD Opteron)  (AME API 2.8 only)
+  LS21 blade server (older firmware levels only)
+  x3550  (AME API 2.8)
+  HS21 blade server (AME API 2.16)
+  HS22 blade server (Research firmware load only)
+  JS22 blade server (AME API 2.14)
+  POWER7 (all models)
+  POWER8 (AME version 5.39)
+  OpenPOWER (POWER systems with BMC service processor)
+  System z (z13 has lab support)
+
+
+
+--------------------------
+Running AMESTER
+
+
+From Linux shell
+   % amester {--nogui} {--debug} {--debug_options} <script>
+
+Optional Parameters
+
+   --nogui: Run amester without a graphical interface. This is useful
+     when running unattending scripts that are collected data traces
+     to output files.
+
+   --debug: Opens the debug window when AMESTER starts.
+
+   --debug_options: Shows information about the parsing of the command line.
+
+   <script>: Execute the Tcl commands in the file <script> after
+   AMESTER starts to run. For example, you can use this to set which
+   sensors should be monitored and displayed in the GUI.
+
+--------------------------
+Getting started with OpenPOWER systems
+
+Step 0: Install ipmitool 
+
+     Install ipmitool on the system where you run AMESTER. At this
+     time, AMESTER depends on using the external
+     ipmitool program to send messages to the OpenPOWER system.
+     Linux distributions commonly install ipmitool by default.
+
+Step 1: Run AMESTER
+
+     See the section "Running AMESTER" for starting the
+     application. For now, start the application with no parameters.
+     It should display the AMESTER main window.
+
+Step 2a: Connect by the AMESTER command line
+
+   1. From the menu bar select Tools -> Command line...
+   2a. In the command line type:
+         openpower myserver -addr bmc.austin.ibm.com -ipmi_user ADMIN -ipmi_passwd admin
+
+	 (Replace the default "ADMIN" and "admin" with the userid and password for your system.
+         Use the BMC IP address for the -addr field.)
+
+   2b. AMESTER requires the use of the ipmitool program.  You can select the program and its
+       location using another switch:
+
+         openpower myserver -addr bmc.austin.ibm.com -ipmi_user ADMIN -ipmi_passwd admin -ipmi_ipmitool /usr/local/bin/ipmitool
+
+
+Step 2b: Connect using the AMESTER GUI.
+
+     An alternate way to connect AMESTER to the OpenPOWER system is to use the GUI.
+     1. From the AMESTER main screen, select "File"
+     2. select "Connect to..."
+     3. select "OpenPOWER..." 
+     4. Entry the IP address, userid, and password
+
+--------------------------
+Getting started with POWER (FSP-based systems)
+
+We will assume the following setup in the network environment:
+
+1. The AMESTER system, which runs the AMESTER program. For example, a
+   personal laptop.
+
+2. A POWER7 server (for example, HV32) with Flexible Service Processor
+   (FSP) Internet address of granola.austin.ibm.com
+
+
+Step 1: Prepare your POWER server
+     A Hardware Management Console (HMC) is not required to use Amester.
+     However, the POWER server's HMC account is used by Amester.
+     The HMC account password must be set to use the "MSGP" method below.
+
+     How to set the HMC password using the Advanced System Management interface:
+
+          1. Use a web browser to view the ASMI webpage.
+	     Use the IP address of the FSP. (http://x.x.x.x)
+	  2. Login using your ASM account
+	  3. Select "Login Profile"
+	  4. Select "Change Password"
+	  5. Set "User ID to change" field to "HMC"
+	  6. Enter your new HMC password in the two entry boxes
+	  7. Click "continue"
+
+Step 2: Run AMESTER
+
+See the section "Running AMESTER" for starting the
+application. For now, start the application with no parameters.  It
+should display the AMESTER main window.
+
+Step 3a: Connect by the AMESTER command line
+
+   1. From the menu bar select Tools -> Command line...
+   2a. In the command line type:
+         netc myfsp -addr granola.austin.ibm.com -tool MSGP -passwd abc123
+
+	 The password "abc123" should be replaced with the HMC account
+	 password
+
+Step 3b: Connect using the AMESTER GUI.
+
+     An alternate way to connect AMESTER to the POWER7 system is to use the GUI.
+     1. From the AMESTER main screen, select "File"
+     2. select "Connect to..."
+     3. select "POWER system FSP..." 
+     4. Entry the FSP address, tool type, system type and password (for system 
+        (older than P8, leave "System type" blank.)
+
+Step 4: See some sensors
+1. In the AMESTER main screen, select Function -> Sensors...
+2. Select "Select sensors". You should see a list of sensors.
+3. Click "PWR1MS" (HINT: To select all the sensors quickly, you can
+   mouse-down on the first one and then drag your mouse over all of
+   them.)
+4. Select OK
+5. You should see values for the pwr1ms sensor updating.  
+6. Click "Graph" next to PWR1MS to see the 1 ms power graph.
+
+NOTE: Using this interface, the most recent 1 ms power value is shown.
+Unfortunately, the service processor is only able to respond every
+50-100 ms, so the data shown in the AMESTER GUI is sub-sampled. The
+trace buffer interface (introduced in 2009 on POWER7 systems) is an
+effective way to capture longer traces at 1 ms resolution.
+
+
+--------------------------
+Getting started with BladeCenter
+
+We will assume the following setup in the network environment:
+
+1. The AMESTER system, which runs the AMESTER program. For example, a
+   personal laptop.
+
+2. A BladeCenter with Management Module IP address 12.0.0.1.
+
+3. The host blade server with the IP address 10.0.0.1 in slot 1 of the
+   BladeCenter. This is the server which is monitored by the AMESTER.
+
+4. The blade is running firmware with AME 2.96.
+
+Step 1: Run the AMESTER
+
+See the section "Running AMESTER" for starting the
+application. For now, start the application with no parameters.  It
+should display the AMESTER main window.
+
+Step 2: Connect to a BladeCenter
+
+1. From the menu bar select Tools -> Command line...
+2. In the command line type "bc mybc -addr 12.0.0.1"
+
+You should see the GUI add a line for each blade in the BladeCenter.
+You will need to wait many seconds while it connects to the
+blade. (About 20 seconds per blade).  You should see the command
+disappear from the "Enter command:" field when the command is
+finished.
+
+Step 3: See some sensors
+1. For one of the blades, select Function -> Sensors...
+2. Select "Select sensors". You should see a list of sensors.
+3. Click "pwr1ms" (HINT: To select all the sensors quickly, you can
+   mouse-down on the first one and then drag your mouse over all of
+   them.)
+4. Select OK
+5. You should see values for the pwr1ms sensor updating.  
+6. Click "Graph" next to pwr1ms to see the 1 ms power graph.
+
+NOTE: Using this interface, the most recent 1 ms power value is shown.
+Unfortunately, the service processor is only able to respond every
+50-100 ms, so the data shown in the AMESTER GUI is sub-sampled.
+
+--------------------------
+Getting started with TMS Tuna emulator
+
+Normally the emulator opens a console window. With Amester, the emulator must use a local TCP/IP port instead. Pick any unused local port number (e.g. 4444) and run it this way:
+
+  % ./emu -v -p 4444 start bluefin ../../../src/flashcard_bringup.raw
+
+ Amester must be version 5.42 or higher to connect to the tuna emulator.
+Create a file called "tuna.tcl" with the content (replace with your local host and port where the emulator runs):
+
+    tunasim mytunasim -addr 9.3.214.149 -port 4444
+
+Run Amester like this (from any system)
+
+    % amester tuna.tcl
+
+It takes about 30 seconds for Amester to complete its connection to the emulator. The console does not accept input during this time. You may use the emulator console (from the Functions menu) to interact with the emulator while it is taking Amester sensor data. 
+
+--------------------------
+Basic Concepts
+
+AMESTER is written in an object-oriented language, so it is helpful to
+understand a little bit about objects.
+
+Examples of high-level objects are a POWER8 OpenPOWER system, an AMEC,
+and a sensor.  AMESTER creates objects for each entity that your
+script references. For example, a "openpower" object is created for
+each OpenPOWER system.  The openpower object contains a list of AMEC
+objects that AMESTER can communicate with. The AMEC (AME component) is
+the firmware supporting AME on each POWER8 chip in the system.  Each
+AMEC object contains a list of sensor objects that it supports.
+
+Objects classes in AMESTER are:
+
+	host: represents a generic server object to which AMESTER
+	connects. In practice, user scripts do not use the host
+	object, but instead instantiate one of the derived classes
+	that correspond to a specific server type.
+
+	    The following objects are subclasses of "host".
+
+        openpower: represents the BMC on a OpenPOWER system.
+
+		netc: represents the FSP (service processor) on a
+		POWER system. This is used for connecting to POWER6
+		and POWER7 systems, for example.
+
+		localhost: Connect to server AMESTER runs on using an
+		OS-based "ipmicmd" application.  The ipmicmd is a
+		host-specific command that is usually distributed with
+		the operating system.
+
+		rmcp: represents a host that AMESTER connects to by
+		RMCP protocol, which is a part of the IPMI protocol.
+
+
+		blade: represents a blade in a BladeCenter
+		chassis. The user does not directly instantiate this
+		object.  It is created as a result of instantiating
+		the "bc" (BladeCenter) class object.
+
+		emtagent: represents a host that runs the "emtagent"
+		program (provided with AMESTER).  AMESTER connects to
+		the emtagent using TCP/IP.  The emtagent receives IPMI
+		commands from AMESTER and executes them on the host
+		using a local "ipmicmd" tool.  This is used for
+		systems that only provide in-band communication to the
+		AME component.
+
+	bc: represents a BladeCenter.  Instantiating this object
+	creates "blade" objects for each blade in the BladeCenter that
+	is found to contain AME component firmware.
+
+	ame: represents an AME component firmware owned by a "host"
+	object.  Some large servers may have more than one ame
+	object. The ame object is created automatically by the "host"
+	class when it initializes and finds AME component firmware on
+	the server.
+
+         On OpenPOWER, there is one ame object for each POWER8
+         chip.
+
+	     Each interface version of the ame object has a different
+	     subclass. Example of ame subclasses follow:
+
+	     ame_2_12: a subclass of the ame class which supports AME
+	     API 2.12
+
+	sensor: represents an AME sensor that is owned by an AME
+	component. The "ame" object creates sensor objects
+	automatically when it initializes.
+
+	     There is a separate sensor subclass for each AME API
+	     level. Sensors will have the same AME API as the ame
+	     object that owns them. Example of the sensor subclass:
+
+	     sensor_2_12: a subclass of sensor class that supports AME
+	     API 2.12
+
+	scope: The AME high-resolution power scope.
+
+	     There is a separate scope subclass for each AME API
+	     level. Example of the scope subclass:
+
+	     scope_2_12: a subclass of scope that supports AME API 2.12
+
+
+AMESTER uses the following naming convention for objects:
+
+    openpower system: <host>
+    openpower AMEC: <host>_<node#>_<amec#>
+    openpower sensor: <host>_<node#>_<amec#>_<sensorname>
+    openpower parameter: <host>_<node#>_<amec#>_<parametername>
+	bc: <bcname> (any string)
+	blade: <bcname>_<slot#>
+	ame component: <bcname>_<slot#>_<amec#> or <host>_<amec#>
+	sensor: <bcname>_<slot>_<amec#>_<sensorname> or <host>_<sensorname>	
+	localhost: <object name>
+	rmcp: <object name>
+	netc: <object name>
+
+AMESTER objects are implemented as [incr Tcl] objects so that all the
+usually methods of configuring and inspecting are the same as in [incr
+Tcl].
+
+	Examples:
+
+	To get a list of all openpower, use the incr Tcl find command:
+
+	   find objects -isa openpower
+
+	To get a list of all power sensors (have string "PWR") on all
+	hosts: 
+
+       find objects *PWR*
+
+	To get a list of all ame components supporting AME API 2.12:
+
+	   find objects -class ame_2_12
+
+	To get the adress of a host called "myserver", use the Incr
+	Tcl cget command:
+
+	   myserver cget -addr	   
+
+	To set the address of a blade, use the incr Tcl configure command:
+
+	   mybc_slot1 configure -addr 9.3.61.200
+
+--------------------------
+Command Line Arguements
+
+The variable ::argv will contain the complete command line arguments.
+The variable ::script_argv will contain only arguments not processed by AMESTER itself.  This allows the script to define its own command line arguments.
+
+Starting AMESTER with the option "--debug_options" will display debugging output regarding the parsing of the command line and how argv and script_argv are set.
+
+--------------------------
+Basic Commands
+
+
+help
+
+  Displays this manual.
+
+
+bc class methods
+
+bc <bcname> [options...]
+
+  Command creates and returns a BladeCenter object called <bcname>.
+  As a part of creation, the AMESTER looks for blades in the chassis,
+  queries them for basic configuration information, and adds them to
+  the GUI. In addition, the bc object will create blade, amec, and
+  sensor objects.
+
+  The BladeCenter object is an [incr Tcl] object, so all standard
+  [incr Tcl] commands will work with it (isa, info, cget, etc.).
+
+  Required Configuration Parameters
+
+  -addr <addr>: The IP address of the BladeCenter Management
+   Module. For example, 12.0.0.1
+
+  Optional Configuration Parameters
+
+  -userid <string>: An optional parameter to specify the BladeCenter
+   account to login to the Management Module.  By default, "USERID" is
+   used. (Default account for BladeCenter.)
+
+  -password <string>: An optional parameter to specify the password of
+   the BladeCenter account.  By default, "PASSW0RD" is used. (Default
+   account password for BladeCenter.)
+
+  -port <integer>: An optional parameter to specify the management
+   port of the Management Module. By default, 6090 is used.
+
+  -slotmask <numerical list>: An optional parameter to specify a list
+   of blade slots that the bc commands should use.  Other slots will
+   be ignored. This is useful for speeding up the command if you only
+   need to look at a single blade in the chassis.
+
+  -cmdcheck <1 | 0>: 0 by default. 1 means to check that each dot
+   command is legal before sending it to the management module.
+
+   Examples:
+
+   To look at all blades in chassis at 12.0.0.1
+     bc mybc -addr 12.0.0.1
+
+   To look only at the blades in slots 1, 2, and 3 in the chassis: 
+     bc mybc -addr 12.0.0.1 -userid USERID -password PASSW0RD -port 6090 -slotmask [list 1 2 3]
+
+
+<bcname> get blades
+
+	 Returns a list of blade objects.
+
+
+host object
+
+Host objects are not created directly.  They are a virtual class and only subclasses (netc, rmcp, blade, localhost) should be instantiated.  However, there are configuration options for the host that can be passed to the subclass.
+
+host object configuration options
+
+      -addr : IP address of server
+      -color: Color used for plotting in graphs
+      -dash: Dash type for plotting (See Tcl BLT library)
+      -symbol: symbol for plotting (See Tcl BLT library)
+
+
+host object commands
+
+<host> poweron
+
+       Power on the host.
+
+<host> poweroffhard
+
+       Power off the host immediately.
+
+<host> poweroffsoft
+
+       Shutdown OS and then remove power.
+
+<host> powercycle
+
+       If power is on, remove power for a few seconds, then restore power.
+       If power is off, an error (non-zero) is returned.
+
+<host object> ipmicmd <address> <netfn> <LUN> <command> <parameters>
+
+       Interactive command to sends the ipmicmd specified by <bytes>
+       to the blade.  <bytes> is a list of bytes in hexadecimal
+       separated by spaces.  
+
+       Bytes should be in the following order:
+         address: 1 byte
+         netfn: 1 byte
+         LUN: 1 byte
+         command: 1 byte
+	 parameters: remaining bytes (if any)
+	 
+	 NOTE: this is a different order than the other IPMI commands
+	 below. This order conforms to OSA's ipmicmd tool.
+
+       The response is printed to stdout as a hexadecimal string. The
+       first byte is the IPMI response code (0 is no error).  The
+       remaining bytes are data returned from the IPMI command.
+
+
+       Example 1: IPMI Get Device ID command
+
+           > HostObj ipmicmd 20 06 00 01
+           0020000115517f020000090042574254
+
+       Example 2: Get the AME API level on an IBM x86 system
+
+           > HostObj ipmicmd 20 3a 00 3c 0a
+           00020c
+
+                parsing the response bytes:
+
+		00: IPMI response = 0 (OK)
+		02: major API level = 2
+		0c: minor API level = 12
+
+
+<host object> ipmi_send_sync <address> <channel> <LUN> <netfn> <command> <data> {priority}
+
+       IPMI parameters:
+       <address>, <channel>, <LUN>, <netfn>, and <command> are 1 byte 
+       each and specified as two ASCII characters.
+       <data> is packed binary data created by the Tcl "binary format" command. 
+       If there are no data bytes, then use {}, an empty Tcl list.
+
+       {priority}. 1 is the highest and proceeds immediately. 4 is the
+       lowest and used for background best-effort data
+       collection. Default is 3.
+
+       This is a command to syncronously send an IPMI command to a
+       host and wait for a result. The result is returned in a list
+       where the first element is the IPMI response code. The second
+       element are any additional data bytes returned by the IPMI
+       command.
+
+       For example:
+
+	   To get the AME API version on an IBM x86 system:
+	   set data [binary format "H*" "0a"]
+	   set result [hostObj bc_ipmicmd 20 00 00 3a 3c $data]
+	   set ipmi_status [lindex $result 0]
+	   set ipmi_response [lindex $result 1]
+	   binary scan $ipmi_response "cc" ameapimajor ameapiminor
+
+
+<host object> ipmi_send <address> <channel> <LUN> <netfn> <command> <data> <callback> {priority}
+
+       This is similar in function to ipmi_send_sync, but executes the
+       <callback> parameter when the IPMI command finishes.  The
+       callback is just normal Tcl code run in the context of the IPMI
+       processing routine.  The callback can access the IPMI return
+       code by the $result variable and it can access the remaining
+       IPMI response bytes with the $databytes variable.  $databyte is
+       a Tcl binary string and the user should use Tcl's "binary scan"
+       command to parse the string.
+
+       The return value is the same as the ipmi_send_sync command.
+
+
+       Example: IPMI Get Device Info command
+
+           proc my_callback {status response} {
+             set bytes ""
+             binary scan $response "H*" bytes
+    	     puts "status = $sstatus  response = $bytes"
+           }
+
+           set callback "my_callback \$status \$databytes"
+           $hostObj ipmi_send 20 00 00 06 01 {} $callback
+
+
+      Example: Get AME API level
+
+           set callback "my_callback \$status \$databytes"
+           $hostObj ipmi_send 20 00 00 3a 3c [binary format "H2" 0a] $callback
+
+
+
+<host object> net_send_msg <cmd> {tag} {callback} {keep} {timeout}
+
+   This sends a command to the ameutil program running on a host.
+
+   cmd: Tcl command to run on remote ameutil running on the host.
+
+       Valid variables in the context of the callback are:
+
+          name: name of host
+
+          reply: the response
+
+          tag: the tag of the command
+
+          keep: the value of keep when the command was posted
+
+   tag: (optional) tag to identify the command. Passed to callback to
+   differentiate between incoming command responses.
+
+   callback: (optional) local Tcl procedure to call with the command
+   response when the command completes.
+
+   keep: (optional) if non-zero, then keep expecting ameutil to return
+   responses with the same tag. Default is 0.
+
+   timeout: number of milliseconds to wait for a response before
+   timeout.
+
+   Example:
+   Set the collection frequency of all sensors in the ameutil to 1 second
+     host_send_msg \$name {set_freq_all 1 1} {} {puts \$reply}
+       
+
+netc object
+
+     AMESTER represents POWER servers using a "netc" object.  NETC is
+     the protocol language used to communicate with the POWER server
+     Flexible Service Processor (FSP).
+
+     Examples for instantiating a netc object:
+
+     netc myfsp -addr 9.1.2.3 -tool dev -passwd FipSdev
+     netc myfsp -addr 9.1.2.3 -tool MSGP -passwd myHMCpasswd
+
+configuration options
+ 
+    -tool: either "dev" or "MSGP". (default is "dev")
+
+    -passwd : The FSP password to use. If tool is "MSGP", use the HMC
+     account password from the ASM web interface.
+
+    -netc_port : The TCP/IP port on the FSP to use. (default 30000)
+
+    -timeout : The timeout in milliseconds to wait for a response from
+     the FSP.  If the timeout occurs, then the TCP/IP connection to
+     the FSP is dropped and restarted.  (default is 60000)
+
+
+blade object
+
+configuration options
+
+      -name : text name based on object name
+      -addr : IP address of server
+      -port : Port address to connect to ameutil. Default is 1412
+      -slot : Primary slot in BladeCenter for the blade
+      -bc   : BladeCenter object for this blade
+      -color: Color for plotting in Tk graphs
+      -powerscope : A scope object for displaying data from AME Daemon tool.
+
+      For example, to set a blade's IP address:
+	  <blade object> configure -addr <IP address>
+
+      Setting the IP address of a blade is required for using some
+      features of AMESTER such as the scope and running commands on
+      the blade via ameutil.  If you do not use these features or have
+      any communications to user-processes running on the blade, then
+      setting addr is not required.
+
+<blade object> get amec
+
+       Returns the AME Component object.  If there are multiple AME Components, then the first one is returned.
+
+<blade object> get ameclist
+       
+       Returns a list of all AME Components in the blade.
+
+<blade object> get macaddr1
+<blade object> get macaddr2
+<blade object> get macaddr3
+<blade object> get macaddr4
+
+       Returns the MAC Address of the blade (as stored in blade Vital
+       Product Data). Blades have up to 4 Ethernet interfaces. If
+       address is 0, then there is no network interface.
+
+<blade object> get link
+
+       Returns "up" if AMESTER has established contact with ameutil
+       program running on blade.  Otherwise, returns "down"
+
+<blade object> get net_status
+
+       Describes above link condition in more detail. Returned values
+       are "disconnected", "opening", "connected", "timeout", "error",
+       "closed"
+
+
+
+
+
+
+
+
+AME Component for API version 2.12
+
+ame_2_12 object configuration options
+
+	 -host : host object
+	 -name : text name, based on object name
+
+<amec object> get ame_version
+
+      Return string containing AME firmware version
+
+<amec object> get ame_date
+      
+      Return string containing date of AME firmware
+
+<amec object> get api_version
+
+      Return string containing AME API version
+
+<amec object> get api_major
+
+      Returns API major version number
+
+<amec object> get api_minor
+
+      Returns API minor version number
+
+<amec object> get amec_ver_major
+
+      Returns AME firmware major version number
+
+<amec object> get amec_ver_minor
+      
+      Returns AME firmware minor version number.
+
+<amec object> get sensors
+
+      Returns list of all sensor objects associated with this AME component.
+
+<amec object> get monitored
+
+      Returns list of all monitored sensor objects for this AME component.
+
+<amec object> get sensorname <sensor list>
+
+      Finds sensor objects by searching for them by name in the AME Component.
+      Returns sensor objects for each sensor named in <sensor list>.
+      For example:
+
+	  set sensor_object_list [mybc_slot1_amec0 get sensorname {pwr1s tempCPU0}]
+
+	  This will begin monitoring the pwr1s and tempCPU0 sensors
+	  and stop monitoring all other sensors in the AME component
+	  mybc_slot1_amec0.
+
+<amec object> get frequency
+
+      Return nominal maximum frequency of CPUs.
+
+<amec object> get numcpu
+
+      Returns the number of CPUs in the blade.  This command is for
+      the AMEC object, not the blade object because the AME firmware
+      implements this function.
+
+<amec object> get cpulist
+
+      Returns a list of CPU socket positions that are filled.  The
+      values here can be used to specify a CPU to throttle using AMEC
+      throttle commands
+
+<amec object> get budget
+
+      Returns the power budget for this AMEC.
+
+<amec object> get control_enable
+
+      Returns the value of the boolean checkbox that activates the control loop 
+      (from the control dialog)
+ 
+<amec object> get control_type
+
+      Returns the numeric "type" of the control loop (from the control dialog,
+      1=throttling, 2=DVS)
+ 
+<amec object> get control_a
+
+      Returns the "A" parameter of the control loop (from the control dialog)
+ 
+<amec object> get control_16ms
+
+      Returns the 16ms target power (from the control dialog)
+ 
+<amec object> get control_160ms
+
+      Returns the 160ms target power (from the control dialog)
+ 
+<amec object> get control_1s
+
+      Returns the 1s target power (from the control dialog)
+ 
+<amec object> get control_ptvm16ms
+
+      Returns the ptvm16ms target power (from the control dialog)
+ 
+<amec object> get control_ptvm160ms
+
+      Returns the ptvm160ms target power (from the control dialog)
+ 
+<amec object> get control_1s
+
+      Returns the 1s target power (from the control dialog)
+ 
+<amec object> get control_ptv16ms
+
+      Returns the ptv16ms target power (from the control dialog)
+ 
+<amec object> get control_ptv160ms
+
+      Returns the ptv160ms target power (from the control dialog)
+ 
+<amec object> get control_ptv1s
+
+      Returns the ptv1s target power (from the control dialog)
+ 
+<amec object> set_cpu_throttle <p> <t>
+
+      Sets a CPU to 1 of 8 throttle positions. <p> is the processor
+      number and <t> is a throttle position. 0 is the lowest throttle
+      position.  In HS20 blades, 7 is the highest throttle
+      position. For HS20, this command sets the clock modulation
+      setting (0=12.5% ... 7=100%)
+
+<amec object> get_cpu_throttle_sync <p>
+
+      Returns the specified CPU's throttle setting, where <p> is the
+      processor number.
+
+<amec object> set_sensor_list <sensor list>
+
+      Causes the AMESTER to begin monitoring the sensors named in
+      <sensor list> for the AME Component. The sensor window and
+      graphs will be updated as new data values are read.
+
+      For example, turn on sensors with names pwr1s and tempCPU0:
+	mybc_slot1_amec0 set_sensor_list {pwr1s tempCPU0}
+
+<amec object> reset
+
+      This sets the accumulator of all sensors to zero and resets the minimum and maximum values.
+
+<amec object> get_control_enable
+
+      Returns 1 if feedback controller is running. Otherwise 0.
+
+<amec object> set_control_enable <0 | 1>
+
+      Turns on the controller if set to 1. Turns off the controller if set to 0.
+
+<amec object> get_control_type
+      
+      Returns the controller type used when control_enable is set to 1.
+
+<amec object> set_control_type <type>
+
+      Type 0: ad hoc controller
+      Type 1: proportional controller
+      Type 2: pass-thru to DVS device driver.
+
+<amec object> get_control_a
+
+      Returns A parameter used in proportional controller and pass-thru controller.
+
+<amec object> set_control_a <value>
+
+      Set the A parameter of the feedback controller
+
+<amec object> get_control_1s
+
+      Returns the 1 second power set point. Value is a floating-point
+      value with a 0.1 resolution. Unit is watts. This is the "simple"
+      interface in the control panel GUI.
+
+<amec object> set_control_1s <power>
+
+      <power> is a floating-point value with a 0.1 resolution. Unit is
+      watts. The set point margin will be subtraced from this value to
+      create the true set point used by the controller.
+
+      Example to set blade feedback controller to 100.3 W
+	      mybc_slot1_amec0 set_control_1s 100.3
+
+<amec object> get_control_ptvm1s
+
+      Returns the 1 second power set point margin. Value is a
+      floating-point value with a 0.1 resolution. Unit is watts.
+
+<amec object> set_control_ptvm1s <power>
+
+      Sets the power margin used by the controller. <power> is a
+      floating-point value with a 0.1 resolution. Unit is watts.
+
+<amec object> get_control_ptv1s
+
+      Directly gets the controller set point for 1 second power.
+      Value is a floating-point value with a 0.1 resolution. Unit is
+      watts.
+
+<amec object> set_control_ptv1s <power>
+
+      Directly sets the controller set point for 1 second power and
+      bypasses use of the set point margin.  Value is a floating-point
+      value with a 0.1 resolution. Unit is watts.
+
+<amec object> get_histogram_snapshot_interval
+
+      Returns the snapshot interval (in milliseconds) used for
+      histograms on the BMC-side.
+
+<amec object> set_histogram_snapshot_interval <time>
+
+      Sets the BMC-side histograms to use a snapshot interval of
+      <time> (specified in milliseconds)
+
+<amec object> histogram_get_enable
+
+      Returns 1 if the BMC is updating its histograms. Otherwise 0.
+
+<amec object> histogram_set_enable <0 | 1>
+     
+     If set to 1, then BMC begins updating all its histograms. If 0,
+     then it stops updating all histograms.
+
+<ame object> histogram_clear
+
+     Clears all AMESTER-side histograms.
+
+
+Functions added in AME Component 2.13
+
+<ame object> get_speed_setpoint
+
+     Sets the variable "speed_setpoint" in the object to the value of
+     the speed_setpoint in the AME firmware.  This setpoint is
+     typically set by an external workload manager to slowdown the
+     server when full performance is not required to meet a service
+     level agreement performance goal.  If the speed_setpoint only has
+     an effect on server processor speed when it is below the speed
+     required for power and thermal control.
+
+     The value ranges from 0.0 to 100.0 in units of % of full performance.
+
+     The firmware will modulate the available processor performance
+     states several times a second (current up to 16 times a second)
+     to achieve the requested speed.  Over long time periods (beyond
+     10 seconds), the server frequency will average the setpoint.
+
+<ame object> set_speed_setpoint <speed>
+
+     Set the processor frequency (when there is no active power or
+     thermal control). The "speed" parameter ranges from 0.0 to 100.0
+
+     Example:
+        This will set the blade to run at 50.5% of full frequency.
+
+	mybc_slot2_ame0 set_speed_setpoint 50.5
+
+
+<ame object> get_override_enable
+
+     Sets the variable "override_enable" in the object to the value in
+     use by the AME firmware. A non-zero value means that the
+     performance state override is active. A zero value means it is
+     not active.
+
+<ame object> set_override_enable <0 | 1>
+
+     Sets the override to enabled (if 1) or disabled (if 0).  When
+     enabled, the override_state in the firmware selects the
+     performance state for the processor.  All AME controllers will
+     not be able to change the performance state.
+
+<ame object> get_override_state
+
+     Sets the "override_state" variable in the object to the current
+     value used by the AME firmware.  This value is an index into the
+     performance management table in the AME firmware. (See AME 2.15 IPMI
+     commands.)
+
+<ame object> set_override_state <state>
+
+     Sets the state used to override performance settings in the AME
+     firmware.  The state parameter is an index into the AME firmware
+     performance management table. An entry in the table specifies the
+     clock throttling and DVFS state to use. The index "0" always sets
+     the processor to its highest performance state.
+    
+
+Functions added in AME Component 2.24
+
+<ame object> sensor_update_by_name_sync <sensor_list>
+     
+     This function updates each sensor in the sensor_list one time and
+     returns when the updates are done.  sensor_list is a Tcl list of
+     sensor names, for example {PWR1MS PWR8S}.
+
+<ame object> sensor_update_by_object_sync <sensor_list>
+     
+     Exactly like sensor_update_by_name_sync, except sensor objects are
+     used instead of the sensor's short name.
+
+     This function updates each sensor in the sensor_list one time and
+     returns when the updates are done.  sensor_list is a Tcl list of
+     sensor objects, for example {myfsp_ame0_PWR1MS myfsp_ame0_PWR8MS}.
+
+<amec object> set_sensor_list_by_name <sensor list>
+
+      This function was previously called "set_sensor_list".
+
+      Causes the AMESTER to begin monitoring the sensors named in
+      <sensor list> for the AME Component. The sensor window and
+      graphs will be updated as new data values are read.
+
+      For example, turn on sensors with names pwr1s and tempCPU0:
+	mybc_slot1_amec0 set_sensor_list {pwr1s tempCPU0}
+
+<amec object> set_sensor_list_by_object <sensor list>
+
+      Causes the AMESTER to begin monitoring the sensors named in
+      <sensor list> for the AME Component. The sensor window and
+      graphs will be updated as new data values are read.
+      The sensor list is a list of objects.
+
+      For example, turn on sensors with names pwr1s and tempCPU0:
+
+	mybc_slot1_amec0 set_sensor_list 
+	    {mybc_slot1_amec0_pwr1s mybc_slot1_amec0_tempCPU0}
+
+<amec object> get sensors
+
+      Returns all the sensor objects the amec object owns.
+      One can iterate through the sensors and find their short names.
+
+	  foreach s [$amec get sensors] {
+		  puts "$s has short name [$s cget -sensorname]"
+          }
+
+AME Sensor for AME API version 2.12
+
+sensor_2_12 <objectname> <AMEC object> [configuration option/value pairs]
+	    
+	    This creates a sensor object named <objectname> for a given <AMEC object>.
+
+sensor_2_12 configure <option> <value> ...
+
+	    Configuration options:
+
+	    -sensorname : Ascii string with descriptive sensorname.
+
+	    -sensornum : A number used by BMC firmware commands to
+             refer to the sensor
+
+	    -freq : Floating-point value in units of Hz that describes
+             how often the sensor value is updated in the BMC
+             firmware.
+
+	    -u_value: Ascii string holding units to display on graph axis and after sensor values.
+
+	    -hist: An integer describing the number of previous values AMESTER should remember (for stripcharts and calculating averages). Default is 100.
+
+	    -avg: The average value of the sensor over the previous
+             values specified by the -hist option. Updated everytime
+             AMESTER reads a new value from the BMC.
+
+	    -scalefactor: A floating-point value that is multiplied
+             with the raw BMC sensor value to get the actual scaled
+             value displayed by the AMESTER.
+
+	    -localtime: Time in milliseconds (since the start of
+             AMESTER program) when the most recent sensor value was
+             read by AMESTER.
+
+	    -timestamp: BMC provided timestamp in units of 1 millisecond for last value update.
+
+	    -timestamp_min: BMC provided timestamp updated when new minimum value is stored.
+
+	    -timestamp_max: BMC provided timestamp updated when new maximum value is stored.
+
+	    -value: Most current alue of sensor.
+
+	    -value_acc: Accumulated value of sensor. A copy of the accumulator on the BMC side, which is 4 bytes.
+
+	    -min: The minimum value of the sensor since last sensor reset.
+
+	    -max: The maximum value of the sensor since last sensor reset.
+
+	    -statusreg: A BMC debugging field for the sensor.  If (statusreg & 0x2), it has a histogram defined.
+
+	    -test: A BMC debugging field for the sensor.
+
+	    -updates: The number of times AMESTER has read the sensor from the BMC.
+
+<sensorObj> cget <option>
+	    
+	    cget can use all the configuration options specified
+	    above. Here are some other useful options:
+
+	    -host : return the host object (for example, a blade
+             object) for the sensor.
+
+	    -parent : return the AMEC object that is associated with
+             this sensor.
+
+	    -name : a nice, unique name for this sensor. (based on
+             object name)
+
+	    -has_hist : If 1, sensor has a histogram defined.
+
+	    -hist_monitor : If 1, histogram is being periodically read
+             by AMESTER.
+
+	    -hist_start_value : first value of first bin of histogram
+
+	    -hist_bin_range : range of a histogram bin in units of
+             sensor's scalefactor
+
+	    -hist_num_bins : number of bins in histogram specified by
+             previous histogram configuration command.
+
+	    -hist_bytes_per_bin : number of bytes BMC uses to
+             accumulate the histogram bin count.
+
+	    -hist_bin_range_scaled : range of bin scaled to a
+             human-readable value
+
+	    -hist_start_value_scaled: minimum value tracked by
+             histogram in sensor's units (u_value).
+
+	    -hist_end_value_scaled: maximum value tracked by the
+             histogram in sensor's units.
+
+	    -hist_low: minimum bin with a non-zero count. Bin is named
+             by the lowest value it holds.
+
+	    -hist_high: maximum bin with a non-zero count. Bin is
+             named by the lowest value it holds.
+
+	    -hist_check_interval: Number of milliseconds to wait
+             between asking BMC for histogram updates. Default is
+             1000.
+
+	    -hist_snapshot_interval: Number of milliseconds after
+             which BMC internally generates the next histogram
+             snapshot for AMESTER to read.
+
+	    -hist_updates : Number of times AMESTER gets a new histogram
+             snapshot.
+
+<sensorObj> make_graph
+
+	    Display a graph of the sensor's historic values.
+
+<sensorObj> histogram_set_config <start_value> <bin_range> <num_bins> <bytes_per_bin>
+
+	    Each sensor has a histogram associated with it. This
+	    command instructs the BMC to define a histogram and
+	    reserve memory in the BMC to store it.  The histogram is
+	    configured based on the internal representation of the
+	    sensor, which is based on its scalefactor.  <start_value>
+	    specifies the lowest value that the histogram should show.
+	    <bin_range> specifies the number of values in each
+	    bin. For example, if a power sensor supports 0.1 W
+	    resolution, then a bin_range of 10 would mean that each
+	    histogram bin has a range of 1.0 W. <num_bins> specifies
+	    the number of histogram bins.  <bytes_per_bin> is the
+	    number of bytes the BMC should reserve to accumulate the
+	    histgram bin values.  Be careful to choose a value so that
+	    the histogram bin will not roll-over before the histogram
+	    can be read twice by AMESTER. Otherwise, roll-over cannot
+	    be detected. Valid values for bytes_per_bin are 1, 2 and
+	    4.
+
+	    Note: BMC keeps two more bins than <num_bins>
+	    specifies. One bin is incremented for each value that is
+	    less than the histogram range and the other bin is
+	    incremented for each value that is over the histogram
+	    range. When the AMESTER displays a histogram, these bins
+	    are displayed at each end of the histogram.  This allows
+	    the user to tell how many values the BMC collected that
+	    were outside the range of the histogram.
+
+	    Note: When the AMESTER reads the BMC histogram, it takes
+	    the difference between each reading of the histogram and
+	    adds the results to its own copy of the histogram which
+	    uses 8 byte storage for each bin.  This allows the AMESTER
+	    to keep very long running histograms with infrequent
+	    roll-over.  This effectively makes the BMC histograms
+	    appear to have 8 bytes of storage for each bin.
+
+<sensorObj> histogram_get_config_sync
+
+	    Synchronously reads BMC histogram configuration options
+	    for this sensor and updates the sensor object
+	    configuration options.  Use cget to read the historam
+	    configuration after this command completes.
+
+
+<sensorObj> histogram_monitor_start
+
+	    Tells AMESTER to periodically read histogram snapshots
+	    from BMC.  Will read at least one snapshot before
+	    histogram_monitor_stop command can stop it.
+
+<sensorObj> histogram_monitor_stop
+
+	    Tells AMESTER to stop reading histogram snapshots from BMC.
+
+<sensorObj> histogram_clear
+
+	    Clear the AMESTER-side histogram by setting each bin to
+	    zero.  BMC-side histogram is never zeroed so that multiple
+	    AMESTERs can read histogram simultaneously.
+	    
+<sensorObj> histogram_graph
+
+	    Display the histogram graphing window.
+
+<sensorObj> get histogram values
+
+	    Returns a list of the histogram bin values.
+
+<sensorObj> get histogram bins
+
+	    Returns a list of the bin start values.
+
+<sensorObj> wait
+<sensorObj> wait value
+
+	    Performs a Tcl vwait to pause thread until the sensor's
+	    value is updated.
+
+<sensorObj> wait histogram 
+
+	    Performs a Tcl vwait to pause thread until histogram
+	    vector is updated.
+
+
+Added for sensor_2_13
+
+<sensorObj> histogram_get_mode
+	    
+	    Returns "histogram" if buffer is in histogram mode.
+	    Returns "timeseries" if buffer is in timeseries mode.
+
+<sensorObj> histogram_set_mode [histogram | timeseries]
+
+	    Sets the sensor trace buffer to histogram or timeseries mode.	    
+
+<sensorObj> histogram_trigger
+
+	    Tells the BMC to trigger a single-shot trace if the sensor
+	    buffer is in timeseries mode. This has no effect if the
+	    sensor is in histogram mode.
+
+Added for ame_2_13
+
+<ame> histogram_trigger
+
+	    Tells the BMC to trigger a single-shot trace for all
+	    sensors that are in timeseries mode.
+
+localhost class methods
+
+
+localhost object
+
+      Optional configuration parameters
+
+      -name : text name based on object name
+      -addr : IP address of server
+      -port : Port address to connect to ameutil. Default is 1412
+      -color: Color for plotting in Tk graphs
+      -powerscope : A scope object for displaying data from AME Daemon tool.
+
+      For example, to set a blade's IP address:
+	  <localhost object> configure -addr <IP address>
+
+      Setting the IP address of a blade is required for using some
+      features of AMESTER such as the scope and running commands on
+      the blade via ameutil.  If you do not use these features or have
+      any communications to user-processes running on the blade, then
+      setting addr is not required.
+
+<local host> get amec
+
+       Returns the AME Component object.  If there are multiple AME Components, then the first one is returned.
+
+<local host> get ameclist
+       
+       Returns a list of all AME Components.
+
+
+rmcp class methods
+
+
+rmcp object
+
+      Required parameters
+      -addr : IP address of Baseboard Management Controller (BMC) in server.
+
+      Optional configuration parameters
+
+      -name : text name based on object name
+      -color: Color for plotting in Tk graphs
+      -powerscope : A scope object for displaying data from AME Daemon tool.
+
+      For example, to set a blade's IP address:
+	  <rmcp object> configure -color red
+
+
+<rmcp host> get amec
+
+       Returns the AME Component object.  If there are multiple AME Components, then the first one is returned.
+
+<rmcp host> get ameclist
+       
+       Returns a list of all AME Components.
+
+
+
+--------------------------
+Scope for AME API 2.12
+
+The AMESTER scope is a way to collect high-resolution power data.  This is done by running in-band processes on the host OS.  Data is sent over the host's ethernet network interface, rather than the out-of-band BladeCenter Mangagement Module so that higher data bandwidths can be sustained.  This allows power data to be collected almost every millisecond.  AMESTER interpolates the data for missing 1 ms intervals.
+
+To use scope the scope feature, the AMESTER must know the IP address of the blade. This is accomplished by using the blade_set_addr command.
+
+
+Commands to create a scope object
+
+amescope::open_file
+
+	Displays a file selection window.  AMESTER window will display the selected scope (.ame) file.
+
+amescope::open_network <hostObj>
+
+        <hostObj> is a host object that has an IP address configured, (for example a blade object).
+
+Scope object commands
+
+<scopeObj> trace_start <bladename> <filename>
+   Begin taking a scope trace of a blade and dump it to a file.
+
+<scopeObj> trace_stop <bladename> <filename>
+   Stop taking a scope trace that was started by scope_trace_start.
+   You must use the same bladename and filename parameters used with scope_trace_start.
+
+<scopeObj> start
+   Begin taking a scope trace. Same as pressing "Start Recording" button.
+
+<scopeObj> stop
+   Stop taking a scope trace. Same as pressing "Stop Recording" button.
+
+amescope::ta_file <filename> <offset> {length} {callback}
+   Runs analysis routines on a scope trace starting at datapoint 'offset' 
+   and continuing for 'length' datapoints. Callback function is passed an 
+   array named ::ta() that contains the results.  Each index in ::ta is 
+   named with the pattern \$tag,*.  The indicies for this tag are deleted 
+   upon return from the callback.
+   The callback is called with a single parameter which is the tag. 
+   So write callbacks like this:
+      proc mycallback {tag} {Tcl commands...}
+
+amescope::trace2ascii <inputfile> <outputfile> {starting record offset} {number of records}
+   Convert a trace file to ASCII
+      in: input file, output file, start time offset (ms), length (ms)
+      output: none
+   Note: start and length are optional.  If not provided, the entire
+   file is converted.
+
+amescope::trace2ascii_split <inputfile> <outputfile> {starting record offset} {number of records}
+   Same as trace2ascii, but put each data field in a separate file.  
+   Each output filename is appended with a string that indicates the type of data in the file.
+
+
+--------------------------
+
+Trace buffers for AME API 2.23
+
+Trace buffers use the internal firmware memory to record long traces of sensors and parameters at high rates of speed.  In POWER7 systems, SCOM addresses can be recorded too.  The process is to 1) find out which trace rates are available 2) configure the traces, 3) start recording and run your workload, 4) stop recording, and 5) download the trace.
+
+1. Find out what is available
+
+<amec> get traces
+
+       Example:  myfsp_ame0 get traces
+       Returns:	 ::myfsp_ame0_trace1ms ::myfsp_ame0_trace32ms
+
+       There are two trace buffers available. The first records every 1 ms
+       and the second records every 32 ms.
+
+<trace> get size
+
+	Returns the size in bytes of the tracebuffer
+
+	Example: ::myfsp_ame0_trace32ms get size 
+	Returns: 16777216
+
+	The buffer is 16 megabytes.
+
+
+<trace> cget -has_scom
+
+	Returns 1 if trace is capable of accessing SCOMs.
+	Otherwise, returns 0.
+
+	In POWER7, only the 32 ms trace can access SCOMs.
+
+2. Configure the traces
+
+<trace> set_config {sensor list} {scom list} {socket list}
+	
+	This informs the system which sensors to record. It also specifies
+	which scoms to record and which processor sockets on which to record them.
+
+	Example: ::myfsp_ame0_trace32ms set_config {{PWR32MS value} {FREQ32MS value}} {test_uint8} {40020} {0}
+
+        This sets the 32 ms trace to record the value of two sensors, 
+	the parameter "test_uint8"  and record  the SCOM 40020 from 
+	socket #0 every 32 ms.
+
+	The format for items in the sensor list is:
+	   { {sensorname_1  field_1} ... {sensorname_N field_N} }
+
+	 Valid sensor fields are: 
+	       "value": sensor value (2 bytes)
+	       "min": minimum value (2 bytes)
+	       "max": maximum value (2 bytes)
+	       "acc": accumuated value (4 bytes)
+	       "updates": number of times sensor has been written (4 bytes)
+	       "test": test field (undefined) (2 bytes)
+	       "rcnt": The firmware 1 ms clock (4 bytes). Same value for all sensors.
+
+	The format for the parameter list is a Tcl list in the form:
+	  { name1 ... nameN }
+
+	The format for the items in the scom list is:
+	  { {r/w address <optional value>} .... }
+
+	Note that addresses and values are in hexadecimal.
+
+	If there are no sensors, parameters, or SCOMs to trace,
+	then use a Tcl empty list {} to signify an empty list.
+
+	Example of reading a SCOM:
+		{r 40020} or {40020}  (read is the default)
+		The trace will contain 8 bytes for the SCOM value.
+
+	Example of writing a SCOM:
+		{w 40020 5}  (write the value 5 to address 40020}
+		The trace will contain 8 bytes with the value 5.
+
+
+        The format for the socket list is:
+	    {0 2} (for tracing only SCOMs on sockets #0 and #2
+	
+	Notes on using SCOMS.
+
+	Traces on POWER7 are limited to using 128 SCOMs.
+	The SCOMs addresses are run in the OCA hardware and there is
+	about a 219 ns delay between accesses.
+
+	The returned SCOM values will be synchronized to the sensor values.
+	They are taken within 1 millisecond of the sensor value.
+
+	The specified socket is only used for deciding which SCOM data to
+	place in the trace buffer. The SCOM commands are actually executed on
+	every socket simultaneously.
+
+3. Start recording
+
+<ame> trace_start
+<trace> start
+
+	These commands are the same.  All traces in the firmware are started
+	at the same time.
+
+	Example:  myfsp_ame trace_start
+
+4. Stop recording
+
+<ame> trace_stop
+<trace> stop
+
+	These commands are the same and manually stop All traces in the 
+	firmware.
+	Additionally, tracing stops automatically when the buffer is full.
+
+	Example: myfsp_ame trace_stop
+
+5. Download the trace
+
+<trace> get_all_entries
+
+	Downloads and returns all trace records.
+
+	Example:
+	    #Download and print comma-seperated values
+	    set entries [::myfsp_ame0_trace32ms get_all_entries]
+	    foreach e $entries {puts stdout [join $e ","]}
+
+--------------------------
+
+Parameter interface for AME API 2.23
+
+The Parameter Interface is a way for AMESTER and AME firmware to 
+communicate important data for configuration and control of the
+system.
+
+There are two type of objects in the parameter interface.
+1. <ame>_parm is the name of the parameter interface object
+   For example: myfsp_ame_parm
+2. <ame>_{parmname} is the name of an individual parameter.
+   For example: myfsp_ame_my_parameter is the parameter object
+   for a parameter named "my_parameter"
+
+Parameters can be vectors. The "vectorsize" property of the parameter
+describes how many elements are in the vector.  When a parameter is
+read, all elements are returned. When a parameter is written, all the
+vectors must be specified. A future version of AMESTER will allow for
+reads/writes to individual elements.
+
+To find available parameters, use the command
+
+   <parameter interface> get parmobjs
+
+   For example:
+       myfsp_ame0_parm get parmobjs
+
+To find out more about a parameter:
+
+   <parameter object> cget -name
+       Returns the parameters name
+   <parameter object> cget -number
+       Returns the parameter 2-byte ID used by AME firmware
+   <parameter object> cget -value
+       Returns the cached value (may not be current)
+       Use "read" to get current value
+   <parameter object> cget -size
+       Returns the element size of the parameter in bytes
+   <parameter object> cget -vectorsize
+       Returns the number of elements in the parameter
+   <parameter object> cget -bytecount
+       Returns the number of bytes used by the parameter 
+       This should always be equal to size * vectorsize.
+   <parameter object> cget -type
+       Returns the type of the parameter's elements.
+       "uint8" is an unsigned 8-bit number
+       "uint16" is an unsigned 16-bit number
+       "uint32" is an unsigned 32-bit number
+       "uint64" is an unsigned 64-bit number.
+       Note: At this time, AMESTER will return a signed number
+       if the most-significant bit of a "uint64" is 1. This is
+       a limitation of Tcl v8.4 which AMESTER uses.
+       "int8" a signed 8-bit number
+       "int16" a signed 16-bit number
+       "int32" a signed 32-bit number
+       "int64" a signed 64-bit number
+       "string" a C-style string. Strings are fixed length which can
+           be determined from the "size" field.
+       "raw" is a bunch of uninterpreted bytes. Read and write commands
+       for this type use Tcl binary strings.
+
+
+To read a parameter value:
+
+   <parameter object> read
+
+   Example: read a parameter called "test_uint8"
+
+      set value [myfsp_ame0_test_uint8 read]
+         puts "the value is $value"
+
+
+To write a parameter value:
+
+   <parameter object> write {value}
+
+   Example: write the value 5 to a parameter called "test_uint8"
+
+      myfsp_ame0_test_uint8 5
+
+   Example: write binary data 0xa4f6 to a "raw" parameter
+
+      myfsp_ame0_my_raw_parameter write [binary format "H*" 0a4f]
+
+   Example: write a vector of "1,2,3" to a "uint8" parameter
+
+      myfsp_ame0_my_array write {1 2 3}
+
+--------------------------
+
+Interface updates for AME API 2.25
+
+Commands to modify the parameter window
+
+   Example: add parameters FMIN and FMAX to the window
+
+      myfsp_ame0_parm gui_add_parm_by_name {FMIN FMAX}
+      or
+      myfsp_ame0_parm gui_add_parm_by_obj {myfsp_ame0_FMIN myfsp_ame0_FMAX}
+
+   Example: set window to show only FMIN and FMAX parameters
+
+      myfsp_ame0_parm gui_set_parm_by_name {FMIN FMAX}
+      or
+      myfsp_ame0_parm gui_set_parm_by_obj {myfsp_ame0_FMIN myfsp_ame0_FMAX}
+
+   Example: set columns to display
+
+      myfsp_ame0_parm gui_set_cols {name size type}
+      or
+      myfsp_ame0_parm gui_add_cols {type bytesize}
+
+Commands to add sensors to the sensor window
+
+   Example: add sensors PWR32MS and VOLT1MSP0V0
+
+      myfsp_ame0 add_sensor_list_by_name {PWR32MS VOLT1MSP0V0}
+      or
+      myfsp_ame0 add_sensor_list_by_object {myfsp_ame0_PWR32MS myfsp_ame0_VOLT1MSP0V0}
+
+--------------------------
+
+Interface updates for AME API 2.27
+
+A command to bulk read a list of parameters. The list is the nice name of the parameter.
+A list is returned of all the values in order.  If one of the parameter names does not exist, 
+then an error is returned.    
+
+   Example: 
+
+   myfsp_ame0_parm read_by_name_sync {FMIN FMAX}
+   
+   returns {2000 4000}
+
+
+--------------------------
+Important global variables
+
+
+new_data_callback
+
+	This global variable is eval'd with the sensor object appended
+	to it. This allows the user to set a callback each time a
+	sensor is updated with new data.
+
+	Example:
+
+	     proc my_data_callback {sensorobj} {
+	        puts "[$sensorobj cget -sensorname] = [$sensorobj cget -value]"
+	     }
+	     set ::new_data_callback my_data_callback	   
+
+--------------------------
+How to use the Amester job library
+
+
+Amester has a library for running external or remote commands (jobs) and
+collecting their output. An alternative way to do this is to use the
+well known Expect library that is included in Amester.
+
+To use Expect, put this in your Amester script:
+   package require Expect
+
+To use the job library, put this in your Amester script:
+   package require job
+
+When using ssh to run a remote job, one should set
+up "passwordless" ssh so that an interactive login
+password is not required.
+
+
+Example of using job_exec to run jobs locally
+on the system where Amester runs.
+
+    proc my_line_callback {job line} {
+        puts "my_line_callback: $job $line"
+    }
+    proc my_done_callback {job} {
+        set output [$job cget -output]
+        puts "$job is done with output = $output"
+    }
+
+    #setup 2 jobs
+    job_exec j1 "ssh lefurgy@arlz048 ls" 
+    j1 add_line_callback my_line_callback 
+    j1 add_isdone_callback my_done_callback
+    job_exec j2 "ssh lefurgy@arlz048 uptime" 
+    j2 add_line_callback my_line_callback 
+    j2 add_isdone_callback my_done_callback
+
+    #setup another job
+    job_exec j3 "ssh lefurgy@arlz048 hostname" 
+    j3 add_line_callback my_line_callback 
+    j3 add_isdone_callback my_done_callback
+
+    #run the jobs by queuing them on a job queue. Guarantees order of completion.
+    jobq q1 -pool {localhost} -isdone_callback my_callback_proc
+    q1 enque {j1 j2}
+
+    #Or just run a job directly
+    j3 run
+
+Job queues are created to run jobs on a pool of systems.
+Each job enqueued is run round-robin on the pool systems
+as soon as a pool system is done with its previous job.
+
+     jobq myqueue -pool {machine1IPaddr machine2IPaddr....}
+
+Job queues have the following commands
+
+    myqueue start: start running jobs
+      Note: enquing jobs will start running automatically since
+      the queue begins in a "started" state. This command
+      is only used if the queue is manually stopped with the
+      "stop" command.
+
+    myqueue stop: stop running jobs
+    myqueue enque {job1 job2 ... }: Put jobs on the queue
+    myqueue getjobs: Return a list of queued jobs
+        
+
+Running a synchronous job (wait for output)
+
+     job_exec j7 "ssh lefurgy@arlz048 ls" -sync 1
+     j7 run
+     j7 cget -output
+
+Creating a job based on ssh to run the uptime command on a remote
+server.
+
+     job_ssh mysshjob server.ibm.com "uptime" -userid lefurgy -sync 1
+     mysshjob run
+     set output [mysshjob cget -output]
+     puts "The result is $output"
+
+--------------------------
+How to tag a new release of Amester
+
+Tagging Amester must be done before a release can be built. The reason is that the Makefile creates the final web release directly from the code repository. This ensures that each release is tagged properly in the repository.
+
+Example of tagging version 6.0
+
+% cd amester
+% svn cp trunk svn+ssh://lefurgy@big-daddy.austin.ibm.com/gsa/ausgsa/projects/a/amester/svn/tags/AMESTER_V6_0
+
+--------------------------
+How to build a web release
+
+This will make amester/build/vX_Y directory for version X.Y release.
+It uses the version number found in the Makefile.
+
+% make build_web
+
+Example output:
+
+lefurgy@big-daddy% make build_web
+mkdir -p build
+rm -rf build/v6_0
+make build_getcode
+make[1]: Entering directory `/gsa/ausgsa-h1/00/lefurgy/amester/trunk/amester'
+# Copy the source file to a new directory, but remove the .svn directories
+mkdir -p build
+rm -rf build/amester.vfs
+tar -c  --exclude .svn vfs | (cd build; tar -x)
+mv build/vfs build/amester.vfs
+make[1]: Leaving directory `/gsa/ausgsa-h1/00/lefurgy/amester/trunk/amester'
+#make build_win
+make build_linux
+make[1]: Entering directory `/gsa/ausgsa-h1/00/lefurgy/amester/trunk/amester'
+mkdir -p build
+cp -f package/kbsvq8.6-bi build/kbskit.bin
+echo Wrapping starpack....
+Wrapping starpack....
+cd build; ../package/kbsvq8.6-bi ../package/sdx.kit  wrap amester.kit -runtime kbskit.bin
+1473 updates applied
+138 updates applied
+mv build/amester.kit amester
+chmod 777 amester
+mkdir -p build/v6_0/linux
+mv amester build/v6_0/linux
+make[1]: Leaving directory `/gsa/ausgsa-h1/00/lefurgy/amester/trunk/amester'
+make agent_build_getcode
+make[1]: Entering directory `/gsa/ausgsa-h1/00/lefurgy/amester/trunk/amester'
+# Copy the source file to a new directory, but remove the CVS directories
+mkdir -p build
+rm -rf build/agent.vfs
+tar -c  --exclude .svn agent | (cd build; tar -x)
+mv build/agent build/agent.vfs
+make[1]: Leaving directory `/gsa/ausgsa-h1/00/lefurgy/amester/trunk/amester'
+#make agent_build_win
+make agent_build_linux
+make[1]: Entering directory `/gsa/ausgsa-h1/00/lefurgy/amester/trunk/amester'
+mkdir -p build
+cp -f package/kbsvq8.6-bi build/kbskit.bin
+echo Wrapping starpack....
+Wrapping starpack....
+cd build; ../package/kbsvq8.6-bi ../package/sdx.kit  wrap agent.kit -runtime kbskit.bin
+1473 updates applied
+20 updates applied
+mv build/agent.kit emtagent
+chmod 777 emtagent
+mkdir -p build/v6_0/linux
+mv emtagent build/v6_0/linux
+make[1]: Leaving directory `/gsa/ausgsa-h1/00/lefurgy/amester/trunk/amester'
+cp vfs/doc/README.txt build/v6_0
+cp vfs/doc/manual.txt build/v6_0
+chmod -R a+r build/v6_0
+Getting a current copy of the source code from svn
+rm -rf amester_v6_0
+#       cvs export -rAMESTER_V6_0 -damester_v6_0 amester
+svn export svn+ssh://lefurgy@big-daddy.austin.ibm.com/gsa/ausgsa/projects/a/amester/svn/tags/AMESTER_V6_0/amester amester_v6_0
+A    amester_v6_0
+A    amester_v6_0/agent.tcl
+A    amester_v6_0/regression
+A    amester_v6_0/regression/POWER7
+A    amester_v6_0/regression/POWER7/avgtemp.tcl
+A    amester_v6_0/regression/POWER7/ocatiming.tcl
+A    amester_v6_0/regression/POWER7/myfsp_ame0_trace32ms.csv
+A    amester_v6_0/regression/openpower_init_trace_hab19_9_3_29_88.txt
+A    amester_v6_0/regression/intdur.tcl
+A    amester_v6_0/regression/exit.tcl
+A    amester_v6_0/regression/cmdline.tcl
+A    amester_v6_0/configure
+A    amester_v6_0/LICENSE
+A    amester_v6_0/Makefile.in
+A    amester_v6_0/run.tcl
+A    amester_v6_0/Copyright.txt
+A    amester_v6_0/configure.in
+A    amester_v6_0/config.guess
+A    amester_v6_0/package
+A    amester_v6_0/package/kbs
+A    amester_v6_0/package/kbs/kbs.tcl
+A    amester_v6_0/package/kbs/sources
+A    amester_v6_0/package/kbs/sources/vqtcl4.1
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/pkgIndex.tcl.in
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/configure
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/Makefile.in
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/ops.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/bits.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/indirect.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/blocked.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/ratcl.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/initests.tcl
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/loop.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/view.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/all.tcl
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/ref.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/file.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/get.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/basic.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/hash.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/l.large.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/mklite.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/mkcl.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/commit.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/l.leaks.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/error.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/mutable.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/m2m.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/column.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/kitten.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/emit.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tests/sorted.test
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/library
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/library/mkclvfs.tcl
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/library/mklite.tcl
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/library/ratcl.tcl
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/library/m2mvfs.tcl
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/doc
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/doc/ratcl.man
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/doc/ratcl.n
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/doc/vlerq.man
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/doc/vlerq.n
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/doc/ratcl.html
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/doc/vlerq.html
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/configure.in
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/ChangeLog
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tclconfig
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tclconfig/tcl.m4
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/tclconfig/install-sh
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/data
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/data/mkblk.db
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/data/lkit-le.db
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/data/gtest.db
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/data/lkit-be.db
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/license.terms
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/generic
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/generic/vlerq.c
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/README
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/aclocal.m4
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/win
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/win/nmakehlp.c
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/win/rules.vc
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/win/makefile.vc
+A    amester_v6_0/package/kbs/sources/vqtcl4.1/win/unistd.h
+A    amester_v6_0/package/kbs/README.txt
+A    amester_v6_0/package/kbs/kbs-amester.tcl
+A    amester_v6_0/package/sdx.kit
+A    amester_v6_0/package/kbsvq8.6-bi
+A    amester_v6_0/package/redhat32
+A    amester_v6_0/package/win
+A    amester_v6_0/config.sub
+A    amester_v6_0/vfs
+A    amester_v6_0/vfs/doc
+A    amester_v6_0/vfs/doc/arlenvironment.txt
+A    amester_v6_0/vfs/doc/ame_2_15.txt
+A    amester_v6_0/vfs/doc/README.txt
+A    amester_v6_0/vfs/doc/manual.txt
+A    amester_v6_0/vfs/main.tcl
+A    amester_v6_0/vfs/lib
+A    amester_v6_0/vfs/lib/log
+A    amester_v6_0/vfs/lib/log/pkgIndex.tcl
+A    amester_v6_0/vfs/lib/log/log.itcl
+A    amester_v6_0/vfs/lib/md5
+A    amester_v6_0/vfs/lib/md5/md5.tcl
+A    amester_v6_0/vfs/lib/md5/NOTES
+A    amester_v6_0/vfs/lib/md5/pkgIndex.tcl
+A    amester_v6_0/vfs/lib/commandline
+A    amester_v6_0/vfs/lib/commandline/commandline.itcl
+A    amester_v6_0/vfs/lib/commandline/commandline.tcl
+A    amester_v6_0/vfs/lib/commandline/pkgIndex.tcl
+A    amester_v6_0/vfs/lib/amesterdebug
+A    amester_v6_0/vfs/lib/amesterdebug/debug.tcl
+A    amester_v6_0/vfs/lib/amesterdebug/pkgIndex.tcl
+A    amester_v6_0/vfs/lib/udp
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/end-user-utility
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/end-user-utility/ipmicmd
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/end-user-utility/ipmicmd/redhat64
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/end-user-utility/ipmicmd/dosHmode
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/end-user-utility/ipmicmd/suse32
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/end-user-utility/ipmicmd/netware
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/end-user-utility/ipmicmd/dosMmode
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/end-user-utility/ipmicmd/suse64
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/end-user-utility/ipmicmd/win2k3amd64
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/end-user-utility/ipmicmd/win2k
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/end-user-utility/ipmicmd/redhat32
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/lib
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/lib/redhat64
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/lib/dosHmode
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/lib/include
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/lib/suse32
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/lib/dosMmode
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/lib/suse64
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/lib/win2k3amd64
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/lib/win2k
+A    amester_v6_0/vfs/lib/OSA_driver_package_20040525/lib/redhat32
+A    amester_v6_0/vfs/lib/data
+A    amester_v6_0/vfs/lib/data/data.itcl
+A    amester_v6_0/vfs/lib/data/pkgIndex.tcl
+A    amester_v6_0/vfs/lib/job
+A    amester_v6_0/vfs/lib/job/job.itcl
+A    amester_v6_0/vfs/lib/job/pkgIndex.tcl
+A    amester_v6_0/vfs/lib/multiselect
+A    amester_v6_0/vfs/lib/multiselect/multiselect.itcl
+A    amester_v6_0/vfs/lib/multiselect/pkgIndex.tcl
+A    amester_v6_0/vfs/lib/multiselect/multiselect.tcl
+A    amester_v6_0/vfs/lib/keys
+A    amester_v6_0/vfs/lib/keys/fsp.client.crt
+A    amester_v6_0/vfs/lib/keys/fsp.client.key
+A    amester_v6_0/vfs/lib/keys/hmcclient.crt
+A    amester_v6_0/vfs/lib/keys/hmcclient.key
+A    amester_v6_0/vfs/lib/keys/fspclient.crt
+A    amester_v6_0/vfs/lib/keys/fspclient.key
+A    amester_v6_0/vfs/lib/power7_partition
+A    amester_v6_0/vfs/lib/power7_partition/power7_partition.itcl
+A    amester_v6_0/vfs/lib/power7_partition/pkgIndex.tcl
+A    amester_v6_0/vfs/lib/app-amester
+A    amester_v6_0/vfs/lib/app-amester/ame_2_12.itcl
+A    amester_v6_0/vfs/lib/app-amester/parm_2_25.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_22.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_14.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_24.itcl
+A    amester_v6_0/vfs/lib/app-amester/tracebuffer.itcl
+A    amester_v6_0/vfs/lib/app-amester/netc.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_16.itcl
+A    amester_v6_0/vfs/lib/app-amester/local.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_26.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_18.itcl
+A    amester_v6_0/vfs/lib/app-amester/sensor_2_12.itcl
+A    amester_v6_0/vfs/lib/app-amester/sensor_2_14.itcl
+A    amester_v6_0/vfs/lib/app-amester/sensor_2_24.itcl
+A    amester_v6_0/vfs/lib/app-amester/pkgIndex.tcl
+A    amester_v6_0/vfs/lib/app-amester/sensor_2_16.itcl
+A    amester_v6_0/vfs/lib/app-amester/sensor_2_18.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame.itcl
+A    amester_v6_0/vfs/lib/app-amester/emtagent.itcl
+A    amester_v6_0/vfs/lib/app-amester/blade.itcl
+A    amester_v6_0/vfs/lib/app-amester/scope.itcl
+A    amester_v6_0/vfs/lib/app-amester/tracebuffer_2_21.itcl
+A    amester_v6_0/vfs/lib/app-amester/tracebuffer_2_23.itcl
+A    amester_v6_0/vfs/lib/app-amester/systemz.itcl
+A    amester_v6_0/vfs/lib/app-amester/openpower.itcl
+A    amester_v6_0/vfs/lib/app-amester/tunasim.itcl
+A    amester_v6_0/vfs/lib/app-amester/sensor_2_8.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_21.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_13.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_23.itcl
+A    amester_v6_0/vfs/lib/app-amester/amester.tcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_15.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_25.itcl
+A    amester_v6_0/vfs/lib/app-amester/scope_2_10.itcl
+A    amester_v6_0/vfs/lib/app-amester/scope_2_12.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_19.itcl
+A    amester_v6_0/vfs/lib/app-amester/sensor_2_13.itcl
+A    amester_v6_0/vfs/lib/app-amester/sensor_2_15.itcl
+A    amester_v6_0/vfs/lib/app-amester/scope_2_16.itcl
+A    amester_v6_0/vfs/lib/app-amester/rmcp.itcl
+A    amester_v6_0/vfs/lib/app-amester/sensor.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_8.itcl
+A    amester_v6_0/vfs/lib/app-amester/tracebuffer_2_20.itcl
+A    amester_v6_0/vfs/lib/app-amester/tracebuffer_2_22.itcl
+A    amester_v6_0/vfs/lib/app-amester/host.itcl
+A    amester_v6_0/vfs/lib/app-amester/parm_2_23.itcl
+A    amester_v6_0/vfs/lib/app-amester/bc.itcl
+A    amester_v6_0/vfs/lib/app-amester/ame_2_20.itcl
+A    amester_v6_0/agent
+A    amester_v6_0/agent/main.tcl
+A    amester_v6_0/agent/lib
+A    amester_v6_0/agent/lib/app-emtagent
+A    amester_v6_0/agent/lib/app-emtagent/ame_2_16.itcl
+A    amester_v6_0/agent/lib/app-emtagent/sensor.itcl
+A    amester_v6_0/agent/lib/app-emtagent/local.itcl
+A    amester_v6_0/agent/lib/app-emtagent/main.tcl
+A    amester_v6_0/agent/lib/app-emtagent/host.itcl
+A    amester_v6_0/agent/lib/app-emtagent/pkgIndex.tcl
+A    amester_v6_0/agent/lib/app-emtagent/sensor_2_16.itcl
+A    amester_v6_0/agent/lib/app-emtagent/ame.itcl
+A    amester_v6_0/agent/lib/commandline
+A    amester_v6_0/agent/lib/commandline/commandline.itcl
+A    amester_v6_0/agent/lib/commandline/commandline.tcl
+A    amester_v6_0/agent/lib/commandline/pkgIndex.tcl
+A    amester_v6_0/agent/lib/debug
+A    amester_v6_0/agent/lib/debug/debug.tcl
+A    amester_v6_0/agent/lib/debug/pkgIndex.tcl
+A    amester_v6_0/agent/lib/multiselect
+A    amester_v6_0/agent/lib/multiselect/pkgIndex.tcl
+A    amester_v6_0/agent/lib/multiselect/multiselect.tcl
+A    amester_v6_0/build
+A    amester_v6_0/doc
+A    amester_v6_0/run.bat
+A    amester_v6_0/README.txt
+A    amester_v6_0/install-sh
+A    amester_v6_0/examples
+A    amester_v6_0/examples/trace.tcl
+A    amester_v6_0/examples/p7_partition.tcl
+A    amester_v6_0/examples/parm.tcl
+A    amester_v6_0/examples/experiments
+A    amester_v6_0/examples/POWER8
+A    amester_v6_0/examples/POWER8/watchsensors.tcl
+A    amester_v6_0/examples/watchsensors.tcl
+A    amester_v6_0/examples/sensorlist.tcl
+A    amester_v6_0/examples/P701_01AA710_099_043_patch.tcl
+A    amester_v6_0/examples/expect.tcl
+A    amester_v6_0/examples/base.tcl
+A    amester_v6_0/examples/blower.tcl
+A    amester_v6_0/examples/measure_interval_p7.tcl
+A    amester_v6_0/examples/ssh_remote_exec.tcl
+A    amester_v6_0/examples/arl
+A    amester_v6_0/examples/arl/milestone.tcl
+A    amester_v6_0/examples/arl/powercatch.tcl
+A    amester_v6_0/examples/arl/umt2k.tcl
+A    amester_v6_0/examples/arl/voltage_table_read.tcl
+A    amester_v6_0/examples/arl/powervar_hw.tcl
+A    amester_v6_0/examples/arl/histogramspec.tcl
+A    amester_v6_0/examples/arl/summer.tcl
+A    amester_v6_0/examples/arl/specjbb_cluster.tcl
+A    amester_v6_0/examples/arl/base.tcl
+A    amester_v6_0/examples/arl/patent2.tcl
+A    amester_v6_0/examples/arl/powershiftdemo1.tcl
+A    amester_v6_0/examples/arl/dvs-control-loop.tcl
+A    amester_v6_0/examples/arl/powershifttest-wmf.tcl
+A    amester_v6_0/examples/arl/powervar_hw_open.tcl
+A    amester_v6_0/examples/arl/target.tcl
+A    amester_v6_0/examples/arl/powerManagement.tcl
+A    amester_v6_0/examples/arl/powershifttest.tcl
+A    amester_v6_0/examples/arl/power.tcl
+Exported revision 746.
+tar -cjf amester_v6_0.tar.bz2 amester_v6_0
+cp amester_v6_0.tar.bz2 build/v6_0
+tar -cjf build/v6_0/examples.tar.bz2 amester_v6_0/examples
+cp -r amester_v6_0/examples build/v6_0
+chmod -R a+r build/v6_0
+
+
+--------------------------
+How to debug Tcl from Emacs
+
+   There is a way to reduce the edit-run-debug cycle. If you use Emacs
+   to edit Tcl files, you can easily change the AMESTER as it runs and
+   not need to restart it each time you want to try a new piece of
+   code.
+
+   This technique works has been tested under Linux and Cygwin
+   environments.
+ 
+
+   In your .emacs file, place a line like this:
+
+      (setq tcl-application "/nas/home/lefurgy/Work/ame/amester/package/kit-0.10-linux-x86-MTall.bin")
+
+   It should point to the Tcl executable used by AMESTER in the
+   package/ directory.  It seems to be important to use an absolute
+   pathname. (No "~" or ../ allowed).  Pick the correct Tcl
+   interpreter binary for your platform.  The Makefile will download
+   interpreters for for Cygwin and linux-x86.
+
+   After you start Emacs, open the vfs/main.tcl file
+
+   In Emacs, select menu option "Tcl -> Restart Tcl Process with file"
+   and choose main.tcl
+
+   Now open your script file in Emacs and select from the menu option
+   "Tcl -> Send file to Tcl process".  This will cause your script to
+   run by evaluating it in the Tcl interpreter.
+
+   Now you can edit functions in the Tcl files (script or AMESTER
+   core) and use the Emacs menu option "Tcl -> Send function to Tcl
+   process".  It will be immediately eval'd by the Tcl interpreter and
+   replace an existing function.
+
+   Emacs also provides a *inferior-tcl* buffer which allows you to
+   type Tcl commands to be evaluated by the Tcl application.  It is
+   similar to using the AMESTER console window.
+
+
+--------------------------
+Common problems
+
+
+BladeCenter issues
+
+    The management module account that AMESTER uses to attach must
+    have sufficient privileges to send IPMI commands to blades. For
+    example, the "supervisor" privilege level is sufficient, but the
+    "operator" level is not sufficient.  AMESTER 5.6 checks for the
+    ability to send IPMI commands to the blade, before issuing any AME
+    firmware commands.  It will issue an error if IPMI commands cannot
+    be sent.
+

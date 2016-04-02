@@ -1,0 +1,415 @@
+#
+# (C) Copyright IBM Corporation 2011, 2016
+#
+
+#
+# Example of using job_exec
+#
+#
+#proc my_line_callback {job line} {
+#    puts "my_line_callback: $job $line"
+#}
+#proc my_done_callback {job} {
+#    set output [$job cget -output]
+#    puts "$job is done with output = $output"
+#}
+#
+##setup 2 jobs
+#job_exec j1 "ssh lefurgy@arlz048 ls" 
+#j1 add_line_callback my_line_callback 
+#j1 add_isdone_callback my_done_callback
+#job_exec j2 "ssh lefurgy@arlz048 uptime" 
+#j2 add_line_callback my_line_callback 
+#j2 add_isdone_callback my_done_callback
+#
+##setup another job
+#job_exec j3 "ssh lefurgy@arlz048 hostname" 
+#j3 add_line_callback my_line_callback 
+#j3 add_isdone_callback my_done_callback
+#
+##run the jobs by queuing them on a job queue. Guarantees order of completion.
+#jobq q1 -pool {localhost}
+#q1 enque {j1 j2}
+#
+##Or just run a job directly
+#j3 run
+#
+#
+# Running a synchronous job (wait for output)
+#
+# job_exec j7 "ssh lefurgy@arlz048 ls" -sync 1
+# j7 run
+# j7 cget -output
+
+
+
+
+package provide job 1.0
+
+#::amesterdebug::set job 1
+
+class job {
+    #hosts: list of hosts this job is given to use
+    #isdone_callback: eval as tcl command when job completes
+    public variable hosts ""
+    protected variable isdone_callback {}
+    #status can be: initialized, running, done
+    protected variable status "initialized"
+
+    #Start the job.  (must configure hosts variable first)
+    public method run {}
+    #Add another callback to the list of callbacks when job is done
+    public method add_isdone_callback {call}
+    #method "run" must call "done" to finish the job
+    public method done {}
+    public method get {what args}
+}
+
+body job::run {} {
+    ::amesterdebug::debug job "$this ::run"
+    if {$status eq "running"} {return -code error "$this is already running"}
+    if {$status eq "done"} {return -code error "$this is already done"}
+    set status "running"
+}
+
+body job::add_isdone_callback {call} {
+    if {$call ne ""} {
+	lappend isdone_callback [list $call]
+    }
+}
+
+body job::done {} {
+    ::amesterdebug::debug job "$this ::done"
+    if {$status eq "done"} {
+	::amesterdebug::debug job "$this WARN: completed multiple times"
+	#Check that a job only completes once and call callbacks happen once
+	return -code error "$this has already finished"
+    }
+    set status "done"
+    foreach call $isdone_callback {
+	catch {eval $call $this} result
+	if {$result != ""} { 
+	    bgerror "$this: isdone_callback error: call=$call  result=$result"
+	}
+    }
+}
+
+body job::get {what args} {
+    switch $what {
+	status {return $status}
+	default {return -code error "$this unknown: $what $args"}
+    }
+    
+}
+
+
+class job_tcl {
+    inherit job
+    public variable command ""
+
+    constructor {cmd args} {
+	::amesterdebug::debug job "$this constructor"
+	regsub -all "::" $this "" name
+	eval configure $args
+	set command $cmd
+    }
+    
+    public method run {}
+}
+
+body job_tcl::run {} {
+
+    #House keeping for all running jobs
+    $this ::job::run
+
+    if {$command ne ""} {
+	if {[catch [list eval $command] result]} {
+	    bgerror "ERROR while executing job $this command=$command result=$result\n"
+	}
+    }
+    done
+}
+
+
+#Executive job as OS task.  (Can be shell script, ssh command to remote machine, etc.)
+class job_exec {
+    inherit job
+
+    public variable output ""
+    public variable sync 0
+    public variable command ""
+    protected variable line_callback ""
+    protected variable outfile ""
+    #File descriptor for command output
+    protected variable fd ""
+
+    protected variable jobwait ""
+
+    constructor {cmd args} {
+	::amesterdebug::debug job "$this constructor"
+	regsub -all "::" $this "" name
+	eval configure $args
+	
+	set command $cmd
+    }
+
+    destructor {
+	catch {close $outfile} result
+	catch {close $fd} result
+    }
+
+    public method run {}
+    protected method process_line {}
+    public method add_line_callback {call}
+}
+
+body job_exec::run {} {
+
+    #House keeping for all running jobs
+    $this ::job::run
+
+    # A temp file to hold program output
+    #set outfilename "${::outputdir}/amester-$tag.txt"
+    # outfile: the file descriptor for the final output file
+    #set outfile [open $outfilename w]
+    
+    # outline: the file descriptor to send each output line to
+    # My routine to execute a given command (and send a callback afterward)
+
+    # 2>@1 tells the command pipeline to copy stderr to stdout. See Tcl "exec" and "open" command docs.
+    if {[catch {
+	set fd [open "| $command 2>@1"]
+    } result]} {
+	return -code error "$this died with error result=$result \nwhile running command=$command"
+    }
+
+    fconfigure $fd -buffering line -blocking no
+    fileevent $fd readable [code $this process_line]
+    
+    if {$sync} {vwait [scope jobwait]}
+}
+
+body job_exec::add_line_callback {call} {
+    if {$call ne ""} {
+	lappend line_callback [list $call]
+    }
+}
+
+body job_exec::process_line {} {
+    if {[eof $fd] || [catch {gets $fd line}]} {
+	# Remote program is finished. Close all sockets.  Do callback.
+	if {$fd ne ""} {close $fd}
+	if {$outfile ne ""} {close $outfile}
+	#call job::done and issue any callbacks
+	done
+	#release syncronization in run procedure, if used
+	set jobwait 1
+    } else {
+	# Remote program sent 1 line.  Save it. Process it.
+	append output "$line\n"
+	foreach call $line_callback {
+	    if {[catch [list eval $call $this [list $line]] result]} {
+		bgerror "ERROR while executing line_callback callback=$call this=$this line=$line:\n  $result"
+	    }
+	}
+    }
+}
+
+
+class job_ssh {
+    inherit job_exec
+
+    public variable userid ""
+    public variable ipaddr ""
+
+    protected variable sshprogram "ssh"
+
+    constructor {ip cmd args} {
+	job_exec::constructor $cmd
+    } {
+	::amesterdebug::debug job "$this constructor"
+	eval configure $args
+
+	if {$userid eq ""} {set userid $::env(USER)}
+
+	set ipaddr $ip
+	set command "$sshprogram ${userid}@${ipaddr} $cmd"
+    }
+}
+
+
+#--------------------------------------------------------------------
+#
+# Job Queue
+#
+# create job queue:
+#
+# jobq myqueue -pool {machine1 machine2....}
+#
+# Use log object: 
+#
+#
+#--------------------------------------------------------------------
+
+class jobq {
+    public variable name ""
+    public variable pool ""
+    public variable isempty_callback ""
+    public variable isdone_callback ""
+    public variable job_callback ""
+    #state is: running, halted
+    private variable state "running"
+    private variable microstate "wait"
+
+    private variable freelist ""
+    private variable joblist ""
+
+    private variable run_after 0
+    public variable run_period 5000
+
+    constructor {args} {
+	#init name to object name (can be overridden by arg)
+	regsub -all "::" $this "" name
+	eval configure $args
+	set freelist $pool
+	run
+    }
+
+    destructor {
+	after cancel $run_after
+    }
+
+    #enque jobs
+    public method enque {jobs} 
+    #clear the job queue
+    public method clear {}
+    #get queued jobs
+    public method getjobs {}
+    #assign jobs and run them
+    private method process {} 
+    # callback for process
+    private method jobdone {job host} 
+    # callback to run the jobqueue itself
+    public method run {}
+    # callback to run the jobqueue itself
+    public method stop {}
+    # Periodically run the next job, if ready
+    private method periodic {}
+}
+
+
+body jobq::enque {jobs} {
+    ::amesterdebug::debug job "$this ::enque $jobs"
+    foreach j $jobs {
+	if {[lsearch -exact $joblist $j] == -1} {
+	    lappend joblist $j
+	}
+    }
+    return
+}
+
+body jobq::clear {} {
+    ::amesterdebug::debug job "$this ::clear"
+    set joblist {}
+    return
+}
+
+body jobq::getjobs {} {
+    ::amesterdebug::debug job "$this ::getjobs"
+    return $joblist
+}
+
+body jobq::process {} {
+    if {$state ne "running"} {return}
+    ::amesterdebug::debug job "$this ::process"
+    #If there is a job and a free machine, assign the job to the machine and run it.
+    while {[llength $joblist] > 0 && [llength $freelist] > 0} {
+	#get first job and machine
+	set job [lindex $joblist 0]
+	set host [lindex $freelist 0]
+	#remove job and machine from lists
+	set joblist [lreplace $joblist 0 0]
+	set freelist [lreplace $freelist 0 0]
+
+	#inform job on which machine to run
+	$job configure -hosts $host
+	# insert a callback to the queue. Note callback appends job object to argument list.
+	$job add_isdone_callback "[code $this jobdone $host]"
+	set microstate "launch"
+	$job run
+	set microstate "wait launch"
+    }
+    return
+}
+
+body jobq::jobdone {host job} {
+    ::amesterdebug::debug job "$this ::jobdone $job $host"
+    #A job is done.  Return machine to free list.  If no jobs remain, callback that queue is empty, else process more jobs.
+    #put host back on freelist
+    lappend freelist $host
+
+    #If application registered a callback for each job completed, do the callback.
+    if {$job_callback ne ""} {
+	set microstate "callback_job"
+	catch {eval $job_callback $this $job} result
+	if {$result != ""} { 
+	    bgerror "$this: job_callback error: $result"
+	}
+	set microstate "wait jobcallback"
+    }
+    
+    if {[llength $joblist]} {
+	#process any more waiting jobs
+	process
+    } elseif {[llength $freelist] == [llength $pool]} {
+	#No jobs and all machines are free
+	if {$isdone_callback ne ""} {
+	    set microstate "callback_done"
+	    catch {eval $isdone_callback $this} result
+	    if {$result != ""} { 
+		bgerror "$this: isdone_callback error: $result"
+	    }
+	    set microstate "wait isdonecallback"
+	}
+    } else {
+	if {$isempty_callback ne ""} {
+	    set microstate "callback_empty"
+	    catch {eval $isempty_callback $this} result
+	    if {$result != ""} { 
+		bgerror "$this: isempty_callback error: $result"
+	    }
+	    set microstate "wait empty"
+	}
+    }
+    return
+}
+
+#
+# Every period, check the status of the job queue and possibly start more jobs
+#
+body jobq::run {} {
+    ::amesterdebug::debug job "$this run"
+    set state "running"
+    after cancel $run_after
+    if {$run_period} {
+	set run_after [after $run_period [code $this periodic]]
+    }
+    return
+}
+
+body jobq::periodic {} {
+    after cancel $run_after
+    if {$run_period} {
+	set run_after [after $run_period [code $this run]]
+    } else {
+	return
+    }
+    process
+    return
+}
+
+body jobq::stop {} {
+    ::amesterdebug::debug job "$this stop"
+    set state "stopped"
+    after cancel $run_after
+}
