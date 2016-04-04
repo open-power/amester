@@ -13,7 +13,7 @@ rm -rf conftest*])
 
 
 dnl Process this file with autoconf to produce a configure script.
-AC_INIT(README.txt)
+AC_INIT(LICENSE)
 
 dnl Set the top-level source directory
 TOP_DIR=`cd ${srcdir}; pwd;`

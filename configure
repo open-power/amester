@@ -598,7 +598,7 @@ PACKAGE_VERSION=
 PACKAGE_STRING=
 PACKAGE_BUGREPORT=
 
-ac_unique_file="README.txt"
+ac_unique_file="LICENSE"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 host_os
