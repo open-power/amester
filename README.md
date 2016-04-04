@@ -52,7 +52,7 @@ In the AMESTER GUI
 1. From the AMESTER main screen, select "File"
 2. select "Connect to..."
 3. select "OpenPOWER..." 
-4. Enter the IP address, IPMI userid, and IPMI password
+4. Enter the BMC IP address, IPMI userid, and IPMI password
    and click "Connect". Wait a few seconds for connection.
 5. In the AMESTER main screen, select Function -> Sensors...
 6. Select "Select sensors". You should see a list of sensors.
