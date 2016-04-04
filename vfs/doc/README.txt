@@ -22,8 +22,8 @@ servers simultaneously to enable cluster-level power management
 studies.
 
 
------------------------
-Installation on Linux and Windows
+---------------------
+Installation on Linux
 
 Step 1: Download the program from the website
      https://github.com/open-power/amester

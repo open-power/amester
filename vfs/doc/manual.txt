@@ -152,7 +152,7 @@ Step 2b: Connect using the AMESTER GUI.
      1. From the AMESTER main screen, select "File"
      2. select "Connect to..."
      3. select "OpenPOWER..." 
-     4. Entry the IP address, userid, and password
+     4. Enter the IP address, userid, and password
 
 --------------------------
 Getting started with POWER (FSP-based systems)
@@ -209,10 +209,9 @@ Step 3b: Connect using the AMESTER GUI.
 Step 4: See some sensors
 1. In the AMESTER main screen, select Function -> Sensors...
 2. Select "Select sensors". You should see a list of sensors.
-3. Click "PWR1MS" (HINT: To select all the sensors quickly, you can
-   mouse-down on the first one and then drag your mouse over all of
-   them.)
-4. Select OK
+3. Click "PWR1MS" (To select many sensors quickly, you can mouse-down
+and drag over many sensor names.)
+4. Select OK.
 5. You should see values for the pwr1ms sensor updating.  
 6. Click "Graph" next to PWR1MS to see the 1 ms power graph.
 
