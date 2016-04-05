@@ -3,7 +3,7 @@ dnl (C) Copyright IBM Corporation 2011, 2016
 AC_PREREQ(2.57)
 
 dnl AC_GREP_SYMBOL(VARIABLE, SYMBOL, FILE)
-AC_DEFUN(AC_GREP_SYMBOL,
+AC_DEFUN([AC_GREP_SYMBOL],
 [AC_REQUIRE([AC_PROG_AWK])dnl
 cat > conftest.awk <<EOF
 [/^# *define *]$2[[ \t]]/ { print [\$][3] }
