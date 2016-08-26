@@ -2364,7 +2364,7 @@ Package rbc0.1 {
 ## @defgroup sdx
 #@verbatim
 Package sdx.kit {
-  Source {Wget http://tclkit.googlecode.com/files/sdx-20110317.kit}
+  Source {Wget https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/tclkit/sdx-20110317.kit}
   Configure {}
   Install {file copy -force [Get srcdir]/sdx-20110317.kit [Get builddir]/bin/sdx.kit}
 }
