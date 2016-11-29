@@ -36,6 +36,7 @@ install ipmitool by default.
 
 ### Step 1: Build AMESTER
 
+    ./autogen.sh
     ./configure
     make
 
