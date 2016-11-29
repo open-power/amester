@@ -46,29 +46,6 @@ dnl Replace `main' with a function in -lm:
 dnl AC_CHECK_LIB(m, main)
 
 
-dnl case $host in
-dnl   *-*-cygwin*|*-*-mingw*)
-dnl    if test "${mambo_enable_cygwin}" = "no" ; then
-dnl      CC="${CC} -mno-cygwin"
-dnl    fi
-dnl    ;;
-dnl esac
-
-
-find . -prune -noleaf > /dev/null 2>&1
-if test $? == 0 ; then
-    NOLEAF=-noleaf
-else
-    NOLEAF=
-fi
-
-files=`cd $srcdir; find . $NOLEAF \( -name '*.in' -o -name '.*.in' \) -a ! \( -name CVS -o -name 'config.h.in' -o -name configure.in \) \
-	-print | sed 's/\.in$//g'`
-
-echo "files = $files"
-
-AC_OUTPUT($files,
+AC_OUTPUT(Makefile,
 		# things to do in config.status (from configure.in)
 	)
-
-
