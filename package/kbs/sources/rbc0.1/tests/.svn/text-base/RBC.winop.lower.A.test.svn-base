@@ -1,0 +1,55 @@
+# RBC.winop.lower.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the lower 
+# function of the winop BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide winop.lower
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval winop.lower {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the lower command works properly when given character input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.lower.A.1.1 {
+	    winop lower: character input
+	} -setup {
+	    graph .graph1
+	    pack .graph1
+	} -body {
+	    if {[catch {winop lower one}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+	    destroy .graph1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the lower command works properly when given a non-existent window.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.lower.A.2.1 {
+	    winop lower: non-existent window
+	} -body {
+	    if {[catch {winop lower .graph1}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -result {0}
+	
+	cleanupTests
+}

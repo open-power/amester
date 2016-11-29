@@ -1,0 +1,384 @@
+# RBC.winop.image.resample.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the image resample 
+# function of the winop BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide winop.image
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval winop.image {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'bell' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.1 {
+	    winop image resample: bell
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest bell}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'bessel' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.2 {
+	    winop image resample: bessel
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest bessel}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'box' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.3 {
+	    winop image resample: box
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest box}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'bspline' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.4 {
+	    winop image resample: bspline
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest bspline}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'catrom' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.5 {
+	    winop image resample: catrom
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest catrom}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'default' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.6 {
+	    winop image resample: default
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest default}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'dummy' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.7 {
+	    winop image resample: dummy
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest dummy}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'gauss8' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.8 {
+	    winop image resample: gauss8
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest gauss8}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'gaussian' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.9 {
+	    winop image resample: gaussian
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest gaussian}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'gi' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.10 {
+	    winop image resample: gi
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest gi}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'lanczos3' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.11 {
+	    winop image resample: lanczos3
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest lanczos3}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'mitchell' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.12 {
+	    winop image resample: mitchell
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest mitchell}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'none' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.13 {
+	    winop image resample: bell
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest none}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'sinc' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.14 {
+	    winop image resample: sinc
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest sinc}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with the 'triangle' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.15 {
+	    winop image resample: triangle
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest triangle}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly with an invalid filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.1.16 {
+	    winop image resample: invalid
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest invalid}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly when given 2 filters (one for
+	# horizontal and one for vertical).
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.2.1 {
+	    winop image resample: 2 filters
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo -height 200 -width 200]
+	} -body {
+	    if {[catch {winop image resample $src $dest box triangle}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly when given a non-existent Tk
+	# photo as the source image.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.3.1 {
+	    winop image resample: non-existent Tk photo source
+	} -setup {
+		set dest [image create photo -file [file join [file dirname [info script]] rain.gif]]
+	} -body {
+	    if {[catch {winop image resample $src $dest sinc}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the resample command works properly when given a non-existent Tk
+	# photo as the destination image.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.resample.A.3.2 {
+	    winop image resample: non-existent Tk photo destination
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+	} -body {
+	    if {[catch {winop image resample $src $dest sinc}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+		image delete $src
+	} -result {0}	
+	
+	cleanupTests
+}

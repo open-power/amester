@@ -1,0 +1,40 @@
+# RBC.eps.title.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the title 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.title
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.title {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the title command works properly when given string input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.title.A.1.1 {
+	    eps title: string input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -title "Title text goes here"
+		.canvas1 itemcget 1 -title
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {Title text goes here}
+	
+	cleanupTests
+}

@@ -1,0 +1,420 @@
+'\"
+'\" Copyright 1991-1997 by Bell Labs Innovations for Lucent Technologies.
+'\"
+'\" Permission to use, copy, modify, and distribute this software and its
+'\" documentation for any purpose and without fee is hereby granted, provided
+'\" that the above copyright notice appear in all copies and that both that the
+'\" copyright notice and warranty disclaimer appear in supporting documentation,
+'\" and that the names of Lucent Technologies any of their entities not be used
+'\" in advertising or publicity pertaining to distribution of the software
+'\" without specific, written prior permission.
+'\"
+'\" Lucent Technologies disclaims all warranties with regard to this software,
+'\" including all implied warranties of merchantability and fitness.  In no event
+'\" shall Lucent Technologies be liable for any special, indirect or
+'\" consequential damages or any damages whatsoever resulting from loss of use,
+'\" data or profits, whether in an action of contract, negligence or other
+'\" tortuous action, arising out of or in connection with the use or performance
+'\" of this software.  
+'\"
+'\" Spline command created by George Howlett.
+'\"
+'\" The definitions below are for supplemental macros used in Tcl/Tk
+'\" manual entries.
+'\"
+'\" .AP type name in/out ?indent?
+'\"	Start paragraph describing an argument to a library procedure.
+'\"	type is type of argument (int, etc.), in/out is either "in", "out",
+'\"	or "in/out" to describe whether procedure reads or modifies arg,
+'\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+'\"	needed;  use .AS below instead)
+'\"
+'\" .AS ?type? ?name?
+'\"	Give maximum sizes of arguments for setting tab stops.  Type and
+'\"	name are examples of largest possible arguments that will be passed
+'\"	to .AP later.  If args are omitted, default tab stops are used.
+'\"
+'\" .BS
+'\"	Start box enclosure.  From here until next .BE, everything will be
+'\"	enclosed in one large box.
+'\"
+'\" .BE
+'\"	End of box enclosure.
+'\"
+'\" .CS
+'\"	Begin code excerpt.
+'\"
+'\" .CE
+'\"	End code excerpt.
+'\"
+'\" .VS ?version? ?br?
+'\"	Begin vertical sidebar, for use in marking newly-changed parts
+'\"	of man pages.  The first argument is ignored and used for recording
+'\"	the version when the .VS was added, so that the sidebars can be
+'\"	found and removed when they reach a certain age.  If another argument
+'\"	is present, then a line break is forced before starting the sidebar.
+'\"
+'\" .VE
+'\"	End of vertical sidebar.
+'\"
+'\" .DS
+'\"	Begin an indented unfilled display.
+'\"
+'\" .DE
+'\"	End of indented unfilled display.
+'\"
+'\" .SO
+'\"	Start of list of standard options for a Tk widget.  The
+'\"	options follow on successive lines, in four columns separated
+'\"	by tabs.
+'\"
+'\" .SE
+'\"	End of list of standard options for a Tk widget.
+'\"
+'\" .OP cmdName dbName dbClass
+'\"	Start of description of a specific option.  cmdName gives the
+'\"	option's name as specified in the class command, dbName gives
+'\"	the option's name in the option database, and dbClass gives
+'\"	the option's class in the option database.
+'\"
+'\" .UL arg1 arg2
+'\"	Print arg1 underlined, then print arg2 normally.
+'\"
+'\" RCS: @(#) $Id: man.macros,v 1.3 2001/02/17 07:46:19 ghowlett Exp $
+'\"
+'\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+'\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1	\\fI\\$2\\fP	(\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+'\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+'\"	# BS - start boxed text
+'\"	# ^y = starting y location
+'\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+'\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+'\"	# VS - start vertical sidebar
+'\"	# ^Y = starting y location
+'\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+'\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+'\"	# Special macro to handle page bottom:  finish off current
+'\"	# box/sidebar if in box/sidebar mode, then invoked standard
+'\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+'\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+'\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+'\"	# SO - start of list of standard options
+.de SO
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 4c 8c 12c
+.ft B
+..
+'\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\fBoptions\\fR manual entry for details on the standard options.
+..
+'\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+'\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+.ft CW
+.sp
+..
+'\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+.ft R
+.sp
+..
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.TH spline n 2.4 BLT "BLT Built-In Commands"
+.BS
+'\" Note:  do not modify the .SH NAME line immediately below!
+.SH NAME
+spline \-  Fit curves with spline interpolation
+.SH SYNOPSIS
+.sp
+\fBspline natural \fIx y sx sy\fR
+.sp
+\fBspline quadratic \fIx y sx sy\fR
+.BE
+.SH DESCRIPTION
+The \fBspline\fR command computes a spline fitting a set of data
+points (x and y vectors) and produces a vector of the interpolated
+images (y-coordinates) at a given set of x-coordinates.
+.SH INTRODUCTION
+Curve fitting has many applications.  In graphs, curve fitting can
+be useful for displaying curves which are aesthetically pleasing to the
+eye.  Another advantage is that you can quickly generate arbitrary points 
+on the curve from a small set of data points.
+.PP
+A spline is a device used in drafting to produce smoothed curves.  The
+points of the curve, known as \fIknots\fR, are fixed and the
+\fIspline\fR, typically a thin strip of wood or metal, is bent around
+the knots to create the smoothed curve.  Spline interpolation is the
+mathematical equivalent.  The curves between adjacent knots are
+piecewise functions such that the resulting spline runs exactly
+through all the knots.  The order and coefficients of the polynominal
+determine the "looseness" or "tightness" of the curve fit from the
+line segments formed by the knots.
+.PP
+The \fBspline\fR command performs spline interpolation using cubic
+("natural") or quadratic polynomial functions.  It computes the spline
+based upon the knots, which are given as x and y vectors.  The
+interpolated new points are determined by another vector which
+represents the abscissas (x-coordinates) or the new points.  The
+ordinates (y-coordinates) are interpolated using the spline and 
+written to another vector.
+.SH EXAMPLE
+Before we can use the \fBspline\fR command, we need to create two BLT
+vectors which will represent the knots (x and y coordinates) of the
+data that we're going to fit.  Obviously, both vectors must be the
+same length.
+.CS
+# Create sample data of ten points. 
+vector x(10) y(10)
+
+for {set i 10} {$i > 0} {incr i -1} {
+    set x($i-1) [expr $i*$i]
+    set y($i-1) [expr sin($i*$i*$i)]
+}
+.CE
+We now have two vectors \f(CWx\fR and \f(CWy\fR representing the ten data
+points we're trying to fit.  The order of the values of \f(CWx\fR must
+be monotonically increasing.  We can use the vector's \fBsort\fR operation 
+to sort the vectors.
+.CS
+x sort y
+.CE
+The components of \f(CWx\fR are sorted in increasing order.  The
+components of \f(CWy\fR are rearranged so that the original x,y
+coordinate pairings are retained.
+.PP
+A third vector is needed to indicate the abscissas (x-coordinates) of
+the new points to be interpolated by the spline.  Like the x vector,
+the vector of abscissas must be monotonically increasing.  All the
+abscissas must lie between the first and last knots (x vector)
+forming the spline.
+.PP
+How the abscissas are picked is arbitrary.  But if we are going to
+plot the spline, we will want to include the knots too.  Since both
+the quadratic and natural splines preserve the knots (an abscissa from
+the x vector will always produce the corresponding ordinate from the y
+vector), we can simply make the new vector a superset of \f(CWx\fR.
+It will contain the same coordinates as \f(CWx\fR, but also the
+abscissas of the new points we want interpolated.  A simple way is to
+use the vector's \fBpopulate\fR operation.
+.CS
+x populate sx 10
+.CE
+This creates a new vector \f(CWsx\fR.  It contains the abscissas of
+\f(CWx\fR, but in addition \f(CWsx\fR will have ten evenly distributed
+values between each abscissa.  You can interpolate any points you
+wish, simply by setting the vector values.
+.PP
+Finally, we generate the ordinates (the images of the spline) using
+the \fBspline\fR command.  The ordinates are stored in a fourth
+vector.
+.CS
+spline natural x y sx sy
+.CE
+This creates a new vector \f(CWsy\fR.  It will have the same length as
+\f(CWsx\fR.  The vectors \f(CWsx\fR and \f(CWsy\fR represent the smoothed
+curve which we can now plot.
+.CS 
+graph .graph
+\&.graph element create original -x x -y x -color blue
+\&.graph element create spline -x sx -y sy -color red
+table . .graph
+.CE
+The \fBnatural\fR operation employs a cubic interpolant when forming
+the spline.  In terms of the draftmen's spline, a \fInatural spline\fR
+requires the least amount of energy to bend the spline (strip of
+wood), while still passing through each knot.  In mathematical terms,
+the second derivatives of the first and last points are zero.
+.PP
+Alternatively, you can generate a spline using the \fBquadratic\fR
+operation.  Quadratic interpolation produces a spline which follows 
+the line segments of the data points much more closely.  
+.CS
+spline quadratic x y sx sy 
+.CE
+.SH OPERATIONS
+.TP
+\fBspline natural \fIx y sx sy\fR 
+Computes a cubic spline from the data points represented by the
+vectors \fIx\fR and \fIy\fR and interpolates new points using vector
+\fIsx\fR as the x-coordinates.  The resulting y-coordinates are
+written to a new vector \fIsy\fR. The vectors \fIx\fR and \fIy\fR must
+be the same length and contain at least three components.  The order
+of the components of \fIx\fR must be monotonically increasing.
+\fISx\fR is the vector containing the x-coordinates of the points to
+be interpolated.  No component of \fIsx\fR can be less than first
+component of \fIx\fR or greater than the last component.  The order
+of the components of \fIsx\fR must be monotonically increasing.
+\fISy\fR is the name of the vector where the calculated y-coordinates
+will be stored.  If \fIsy\fR does not already exist, a new vector will be
+created.
+.TP
+\fBspline quadratic \fIx y sx sy\fR 
+Computes a quadratic spline from the data points represented by the
+vectors \fIx\fR and \fIy\fR and interpolates new points using vector
+\fIsx\fR as the x-coordinates.  The resulting y-coordinates are
+written to a new vector \fIsy\fR.  The vectors \fIx\fR and \fIy\fR must
+be the same length and contain at least three components.  The order
+of the components of \fIx\fR must be monotonically increasing.
+\fISx\fR is the vector containing the x-coordinates of the points to
+be interpolated. No component of \fIsx\fR can be less than first
+component of \fIx\fR or greater than the last component.  The order of
+the components of \fIsx\fR must be monotonically increasing.  \fISy\fR
+is the name of the vector where the calculated y-coordinates are
+stored.  If \fIsy\fR does not already exist, a new vector will be
+created.
+.SH REFERENCES
+.nf
+.sp
+Numerical Analysis
+by R. Burden, J. Faires and A. Reynolds.	
+Prindle, Weber & Schmidt, 1981, pp. 112
+.sp
+Shape Preserving Quadratic Splines 
+by D.F.Mcallister & J.A.Roulier
+Coded by S.L.Dodd & M.Roulier N.C.State University.
+.sp
+.fi
+The original code for the quadratric spline can be found in TOMS #574.
+.SH KEYWORDS
+spline, vector, graph
+

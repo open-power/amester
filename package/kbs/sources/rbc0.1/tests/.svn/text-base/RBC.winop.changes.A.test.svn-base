@@ -1,0 +1,55 @@
+# RBC.winop.changes.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the changes 
+# function of the winop BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide winop.changes
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval winop.changes {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the changes command works properly when given an existing window.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.changes.A.1.1 {
+	    winop changes: existing window
+	} -setup {
+	    graph .graph1
+	    pack .graph1
+	} -body {
+	    if {[catch {winop changes .graph1}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+	    destroy .graph1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the changes command works properly when given a non-existent window.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.changes.A.1.2 {
+	    winop changes: non-existent window
+	} -body {
+	    if {[catch {winop changes .graph1}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -result {0}
+	
+	cleanupTests
+}

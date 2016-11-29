@@ -1,0 +1,91 @@
+# RBC.eps.justify.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the justify 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.justify
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.justify {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the justify command works properly when given 'left' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.justify.A.1.1 {
+	    eps justify: left
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -justify left
+		.canvas1 itemcget 1 -justify
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {left}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the justify command works properly when given 'center' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.justify.A.1.2 {
+	    eps justify: center
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -justify center
+		.canvas1 itemcget 1 -justify
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {center}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the justify command works properly when given 'right' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.justify.A.1.3 {
+	    eps justify: right
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -justify right
+		.canvas1 itemcget 1 -justify
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {right}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the justify command works properly when given an invalid string.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.justify.A.1.4 {
+	    eps justify: invalid string
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -justify invalid}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	cleanupTests
+}

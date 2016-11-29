@@ -1,0 +1,144 @@
+# RBC.winop.image.gradient.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the image gradient 
+# function of the winop BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide winop.image
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval winop.image {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the gradient command works properly when given 'linear' as the type.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.gradient.A.1.1 {
+	    winop image gradient: linear
+	} -setup {
+		set img [image create photo]
+	} -body {
+	    if {[catch {winop image gradient $img blue green linear}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $img
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the gradient command works properly when given 'radial' as the type.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.gradient.A.1.2 {
+	    winop image gradient: radial
+	} -setup {
+		set img [image create photo]
+	} -body {
+	    if {[catch {winop image gradient $img blue green radial}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $img
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the gradient command works properly when given 'rectangular' as the 
+	# type.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.gradient.A.1.3 {
+	    winop image gradient: rectangular
+	} -setup {
+		set img [image create photo]
+	} -body {
+	    if {[catch {winop image gradient $img blue green rectangular}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $img
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the gradient command works properly when given 'blank' as the type.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.gradient.A.1.4 {
+	    winop image gradient: blank
+	} -setup {
+		set img [image create photo]
+	} -body {
+	    if {[catch {winop image gradient $img blue green blank}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $img
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the gradient command works properly when given a non-existent photo
+	# reference.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.gradient.A.2.1 {
+	    winop image gradient: non-existent photo
+	} -body {
+	    if {[catch {winop image gradient $img blue green linear}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the gradient command works properly when given an invalid left color
+	# name.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.gradient.A.3.1 {
+	    winop image gradient: invalid left color name
+	} -setup {
+		set img [image create photo]
+	} -body {
+	    if {[catch {winop image gradient $img invalid green linear}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+		image delete $img
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the gradient command works properly when given an invalid right
+	# color name.
+	# CRASHES INTERPRETER!!!
+	# ------------------------------------------------------------------------------------ 
+#	test RBC.winop.image.gradient.A.3.2 {
+#	    winop image gradient: invalid right color name
+#	} -setup {
+#		set img [image create photo]
+#	} -body {
+#	    if {[catch {winop image gradient $img blue invalid linear}]} {
+#			return 0
+#	    } else {
+#			return 1
+#	    }
+#	} -cleanup {
+#		image delete $img
+#	} -result {0}
+	
+	cleanupTests
+}

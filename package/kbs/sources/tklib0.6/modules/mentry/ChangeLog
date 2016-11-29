@@ -1,0 +1,44 @@
+2013-03-25  Andreas Kupries  <andreas_kupries@users.sourceforge.net>
+
+	*
+	* Released and tagged Tklib 0.6 ========================
+	* 
+
+2012-03-10  Csaba Nemethi <csaba.nemethi@t-online.de>
+
+	* *.tcl:         Bumped the version number to 3.6; updated the
+	* COPYRIGHT.txt: copyright information.
+	* README.txt:
+
+	* scripts/*.tcl: Improved the impleementation of the "-background"
+	  option in Mentry_tile; made sure to use the theme-specific disabled
+	  foreground color in Mentry_tile; extended the support for the
+	  "tileqt" theme to work on KDE 4, too; guarded against scripts that
+	  start by destroying all children of the root window; updated the
+	  copyright information.
+
+	* CHANGES.txt: Updated to reflect the changes; minor improvements.
+	* doc/*.html:
+
+	* ../../examples/*.tcl: Updated the copyright information.
+
+2011-08-22  Csaba Nemethi <csaba.nemethi@t-online.de>
+
+	* CHANGES.txt:                Eliminated the deprecated free-form scan
+	* scripts/mentryDateTime.tcl: from the implementation of the
+	  "mentry::getClockVal" command for Tcl versions 8.5 and above.
+
+2011-08-19  Csaba Nemethi <csaba.nemethi@t-online.de>
+
+	* *.tcl:           Bumped the version number to 3.5.
+	* *.txt:
+	* doc/mentry.html:
+
+	* scripts/mentryWidget.tcl: Fixed a minor bug related to the handling
+	  of <Button-1> events.
+
+	* scripts/mwutil.tcl: Updated to the same version as in Tablelist 5.3.
+
+2010-12-07  Csaba Nemethi <csaba.nemethi@t-online.de>
+
+	* Added mentry to tklib.

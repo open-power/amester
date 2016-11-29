@@ -1,0 +1,464 @@
+# RBC.winop.image.subsample.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the image subsample 
+# function of the winop BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide winop.image
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval winop.image {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'bell' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.1 {
+	    winop image subsample: bell
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 bell}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'bessel' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.2 {
+	    winop image subsample: bessel
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 bessel}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'box' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.3 {
+	    winop image subsample: box
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 box}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'bspline' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.4 {
+	    winop image subsample: bspline
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 bspline}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'catrom' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.5 {
+	    winop image subsample: catrom
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 catrom}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'default' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.6 {
+	    winop image subsample: default
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 default}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'dummy' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.7 {
+	    winop image subsample: dummy
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 dummy}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'gauss8' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.8 {
+	    winop image subsample: gauss8
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 gauss8}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'gaussian' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.9 {
+	    winop image subsample: gaussian
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 gaussian}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'gi' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.10 {
+	    winop image subsample: gi
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 gi}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'lanczos3' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.11 {
+	    winop image subsample: lanczos3
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 lanczos3}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'mitchell' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.12 {
+	    winop image subsample: mitchell
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 mitchell}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'none' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.13 {
+	    winop image subsample: bell
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 none}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'sinc' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.14 {
+	    winop image subsample: sinc
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 sinc}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with the 'triangle' filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.15 {
+	    winop image subsample: triangle
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 triangle}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly with an invalid filter.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.1.16 {
+	    winop image subsample: invalid
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 invalid}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly when given 2 filters (one for
+	# horizontal and one for vertical).
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.2.1 {
+	    winop image subsample: 2 filters
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 box triangle}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly when given a non-existent Tk
+	# photo as the source image.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.3.1 {
+	    winop image subsample: non-existent Tk photo source
+	} -setup {
+		set dest [image create photo -file [file join [file dirname [info script]] rain.gif]]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 sinc}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly when given a non-existent Tk
+	# photo as the destination image.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.3.2 {
+	    winop image subsample: non-existent Tk photo destination
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 sinc}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+		image delete $src
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly when given positive integer
+	# values for x, y, width, and height values.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.4.1 {
+	    winop image subsample: positive integer values
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0 0 50 50 box}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly when given positive decimal
+	# values for x, y, width, and height values.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.4.2 {
+	    winop image subsample: positive decimal values
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest 0.5 0.5 50.5 50.5 box}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly when given negative integer
+	# values for x, y, width, and height values.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.4.3 {
+	    winop image subsample: negative integer values
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest -1 -1 -50 -50 box}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the subsample command works properly when given negative decimal
+	# values for x, y, width, and height values.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.subsample.A.4.4 {
+	    winop image subsample: negative decimal values
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image subsample $src $dest -0.5 -0.5 -50.5 -50.5 box}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	cleanupTests
+}

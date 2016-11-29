@@ -1,0 +1,116 @@
+# RBC.eps.shadow.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the shadow 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.shadow
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.shadow {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the shadow command works properly when given a valid color name.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.shadow.A.1.1 {
+	    eps shadow: valid color
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -shadow blue
+		.canvas1 itemcget 1 -shadow
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {blue 1}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the shadow command works properly when given an invalid color name.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.shadow.A.1.2 {
+	    eps shadow: invalid color
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -shadow invalid}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the shadow command works properly when given a valid color name and
+	# a valid integer value.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.shadow.A.1.3 {
+	    eps shadow: valid color, valid integer
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -shadow {blue 4}
+		.canvas1 itemcget 1 -shadow
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {blue 4}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the shadow command works properly when given an invalid color name
+	# and a valid integer value.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.shadow.A.1.4 {
+	    eps shadow: invalid color, valid integer
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -shadow {invalid 1}}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+		
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the shadow command works properly when given a valid color name
+	# and an invalid integer value.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.shadow.A.1.5 {
+	    eps shadow: valid color, invalid integer
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -shadow {blue -1}}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	cleanupTests
+}

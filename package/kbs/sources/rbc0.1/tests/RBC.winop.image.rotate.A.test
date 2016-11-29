@@ -1,0 +1,155 @@
+# RBC.winop.image.rotate.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the image rotate 
+# function of the winop BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide winop.image
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval winop.image {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the rotate command works properly when given a positive integer.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.rotate.A.1.1 {
+	    winop image rotate: positive integer
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image rotate $src $dest 90}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the rotate command works properly when given a negative integer.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.rotate.A.1.2 {
+	    winop image rotate: negative integer
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image rotate $src $dest -90}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the rotate command works properly when given a positive decimal.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.rotate.A.1.3 {
+	    winop image rotate: positive decimal
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image rotate $src $dest 90.5}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the rotate command works properly when given a negative decimal.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.rotate.A.1.4 {
+	    winop image rotate: negative decimal
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image rotate $src $dest -90.5}]} {
+			return 1
+	    } else {
+			return 0
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the rotate command works properly when given character input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.rotate.A.1.5 {
+	    winop image rotate: character input
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+		set dest [image create photo]
+	} -body {
+	    if {[catch {winop image rotate $src $dest invalid}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+		image delete $src
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the rotate command works properly when given a non-existent Tk
+	# photo as the source image.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.rotate.A.2.1 {
+	    winop image rotate: non-existent Tk photo source
+	} -setup {
+		set dest [image create photo -file [file join [file dirname [info script]] rain.gif]]
+	} -body {
+	    if {[catch {winop image rotate $src $dest 90}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+		image delete $dest
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the rotate command works properly when given a non-existent Tk
+	# photo as the destination image.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.winop.image.rotate.A.2.2 {
+	    winop image rotate: non-existent Tk photo destination
+	} -setup {
+		set src [image create photo -file [file join [file dirname [info script]] rain.gif]]
+	} -body {
+	    if {[catch {winop image rotate $src $dest 90}]} {
+			return 0
+	    } else {
+			return 1
+	    }
+	} -cleanup {
+		image delete $src
+	} -result {0}
+	
+	cleanupTests
+}

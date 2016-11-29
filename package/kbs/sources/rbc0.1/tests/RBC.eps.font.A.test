@@ -1,0 +1,148 @@
+# RBC.eps.font.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the font 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.font
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.font {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the font command works properly when given a string as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.font.A.1.1 {
+	    eps font: string
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -font Times
+		.canvas1 itemcget 1 -font
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {Times}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the font command works properly when given a list with a string as 
+	# input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.font.A.1.2 {
+	    eps font: list with string
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -font {Times}
+		.canvas1 itemcget 1 -font
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {Times}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the font command works properly when given a list with a string and
+	# a postive integer as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.font.A.1.3 {
+	    eps font: list with string and positive integer
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -font {Times 12}
+		.canvas1 itemcget 1 -font
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {Times 12}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the font command works properly when given a list with a string and
+	# a negative integer as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.font.A.1.4 {
+	    eps font: list with string and negative integer
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -font {Times -12}
+		.canvas1 itemcget 1 -font
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {Times -12}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the font command works properly when given a list with a string and
+	# a decimal as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.font.A.1.5 {
+	    eps font: list with string and decimal
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -font {Times 12.5}}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the font command works properly when given a list with a 2 strings 
+	# as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.font.A.1.6 {
+	    eps font: 2 strings
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -font {Times Ten}}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the font command works properly when given a valid font string as
+	# input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.font.A.1.7 {
+	    eps font: valid font string
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -font "*-Arial-Bold-R-Normal-*-12-120-*"
+		.canvas1 itemcget 1 -font
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {*-Arial-Bold-R-Normal-*-12-120-*}
+	
+	cleanupTests
+}

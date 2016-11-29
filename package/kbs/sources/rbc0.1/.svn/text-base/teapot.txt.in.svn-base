@@ -1,0 +1,20 @@
+Package @PACKAGE_NAME@ @PACKAGE_VERSION@
+Meta platform        @PLATFORM@
+Meta as::author      {Robert Techentin}
+Meta as::author      {Samuel Green}
+Meta as::author      {Nicholas Hudson}
+Meta as::author      {Stanton Sievers}
+Meta as::author      {Jarrod Stormo}
+Meta as::author      {George Howlett}
+Meta as::origin      http://sourceforge.net/projects/rbctoolkit
+Meta category        Widget
+Meta description     Graphing widgets for X-Y plots, barcharts and
+Meta description     stripcharts, and double precision data vectors
+Meta entrykeep       .
+Meta excluded        *.a *.tap *.lib
+Meta included        @PKG_LIB_FILE@ rbc*.pro *.tcl
+Meta license         BSD
+Meta require         {Tcl @TCL_VERSION@}
+Meta require         {Tk  @TK_VERSION@}
+Meta subject         blt stripchart barchart graph plot vector
+Meta summary         Refactored BLT Components

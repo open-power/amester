@@ -1,0 +1,59 @@
+# RBC.eps.file.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the file 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.file
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.file {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the file command works properly when given a 
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.file.A.1.1 {
+	    eps file: postscript file
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -file out.ps
+		.canvas1 itemcget 1 -file
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {out.ps}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the file command works properly when given an invalid color name.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.file.A.1.2 {
+	    eps file: invalid color
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -file invalid}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	cleanupTests
+}

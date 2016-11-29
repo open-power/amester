@@ -1,0 +1,59 @@
+K 25
+svn:wc:ra_dav:version-url
+V 40
+/p/rbctoolkit/code/!svn/ver/49/trunk/rbc
+END
+teapot.txt.in
+K 25
+svn:wc:ra_dav:version-url
+V 54
+/p/rbctoolkit/code/!svn/ver/42/trunk/rbc/teapot.txt.in
+END
+pkgIndex.tcl.in
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/p/rbctoolkit/code/!svn/ver/38/trunk/rbc/pkgIndex.tcl.in
+END
+configure
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/p/rbctoolkit/code/!svn/ver/47/trunk/rbc/configure
+END
+Makefile.in
+K 25
+svn:wc:ra_dav:version-url
+V 52
+/p/rbctoolkit/code/!svn/ver/42/trunk/rbc/Makefile.in
+END
+configure.in
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/p/rbctoolkit/code/!svn/ver/47/trunk/rbc/configure.in
+END
+ChangeLog
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/p/rbctoolkit/code/!svn/ver/20/trunk/rbc/ChangeLog
+END
+license.terms
+K 25
+svn:wc:ra_dav:version-url
+V 53
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/license.terms
+END
+README
+K 25
+svn:wc:ra_dav:version-url
+V 47
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/README
+END
+aclocal.m4
+K 25
+svn:wc:ra_dav:version-url
+V 50
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/aclocal.m4
+END

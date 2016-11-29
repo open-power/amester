@@ -1,0 +1,141 @@
+# RBC.canvas.quick.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the quick 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.quick
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.quick {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the quick command works correctly when given 1.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.quick.A.1.1 {
+	    eps quick: 1
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -quick 1
+		.canvas1 itemcget 1 -quick
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {1}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the element configure -quick command works correctly when given 0.
+	# ------------------------------------------------------------------------------------
+	test RBC.canvas.quick.A.1.2 {
+		eps quick: 0
+	} -setup {
+		canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -quick 0
+		.canvas1 itemcget 1 -quick
+	} -cleanup {
+		.canvas1 delete 1
+		destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the element configure -quick command works correctly when given true.
+	# ------------------------------------------------------------------------------------
+	test RBC.canvas.quick.A.1.3 {
+		eps quick: true
+	} -setup {
+		canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -quick true
+		.canvas1 itemcget 1 -quick
+	} -cleanup {
+		.canvas1 delete 1
+		destroy .canvas1
+	} -result {1}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the element configure -quick command works correctly when given 
+	# false.
+	# ------------------------------------------------------------------------------------
+	test RBC.canvas.quick.A.1.4 {
+		eps quick: false
+	} -setup {
+		canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -quick false
+		.canvas1 itemcget 1 -quick
+	} -cleanup {
+		.canvas1 delete 1
+		destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the element configure -quick command works correctly when given yes.
+	# ------------------------------------------------------------------------------------
+	test RBC.canvas.quick.A.1.5 {
+		eps quick: yes
+	} -setup {
+		canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -quick yes
+		.canvas1 itemcget 1 -quick
+	} -cleanup {
+		.canvas1 delete 1
+		destroy .canvas1
+	} -result {1}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the element configure -quick command works correctly when given no.
+	# ------------------------------------------------------------------------------------
+	test RBC.canvas.quick.A.1.6 {
+		eps quick: no
+	} -setup {
+		canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -quick no
+		.canvas1 itemcget 1 -quick
+	} -cleanup {
+		.canvas1 delete 1
+		destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the element configure -quick command works correctly when given an 
+	# invalid input value.
+	# ------------------------------------------------------------------------------------
+	test RBC.canvas.quick.A.1.7 {
+		eps quick: invalid input
+	} -setup {
+		canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -quick invalid}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+		destroy .canvas1
+	} -result {0}
+	
+	cleanupTests
+}

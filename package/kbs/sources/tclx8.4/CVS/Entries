@@ -1,0 +1,16 @@
+/CHANGES/8.47/Thu Sep 26 00:23:29 2002//D2010.10.28.05.00.00
+/ChangeLog/1.66/Mon Dec 15 20:00:27 2008//D2010.10.28.05.00.00
+/Makefile.in/1.17/Sun Nov 20 21:29:13 2005//D2010.10.28.05.00.00
+/README/8.29/Sun Nov 20 19:58:27 2005//D2010.10.28.05.00.00
+/aclocal.m4/1.1/Tue Apr  2 03:02:04 2002//D2010.10.28.05.00.00
+/configure/1.23/Thu Jan 26 00:30:54 2006/-kb/D2010.10.28.05.00.00
+/configure.in/1.17/Thu Jan 26 00:30:54 2006//D2010.10.28.05.00.00
+/license.terms/1.2/Sun Jun 29 23:51:20 2008//D2010.10.28.05.00.00
+D/compat////
+D/doc////
+D/generic////
+D/library////
+D/tclconfig////
+D/tests////
+D/unix////
+D/win////

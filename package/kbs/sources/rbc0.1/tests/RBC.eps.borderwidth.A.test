@@ -1,0 +1,129 @@
+# RBC.eps.borderwidth.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the borderwidth 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.borderwidth
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.borderwidth {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the borderwidth configuration works properly.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.borderwidth.A.1.1 {
+	    eps borderwidth: valid integer input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+	    .canvas1 itemconfigure 1 -borderwidth 20
+	    .canvas1 itemcget 1 -borderwidth
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {20}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the borderwidth configuration works for invalid integer input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.borderwidth.A.1.2 {
+	    eps borderwidth: invalid integer input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+	    if {[catch {.canvas1 itemconfigure 1 -borderwidth -20}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the borderwidth configuration works for valid decimal input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.borderwidth.A.1.3 {
+	    eps borderwidth: valid decimal input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0  
+	} -body {
+	    .canvas1 itemconfigure 1 -borderwidth 20.5
+	    .canvas1 itemcget 1 -borderwidth
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {21}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the borderwidth configuration works for invalid decimal input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.borderwidth.A.1.4 {
+	    eps borderwidth: invalid decimal input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0  
+	} -body {
+	    if {[catch {.canvas1 itemconfigure 1 -borderwidth -20.5}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the borderwidth configuration works for character input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.borderwidth.A.1.5 {
+	    eps borderwidth: character input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0  
+	} -body {
+	    if {[catch {.canvas1 itemconfigure 1 -borderwidth invalid}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the borderwidth configuration works when given 0 as input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.borderwidth.A.1.6 {
+	    eps borderwidth: 0
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0  
+	} -body {
+	    .canvas1 itemconfigure 1 -borderwidth 0
+	    .canvas1 itemcget 1 -borderwidth
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	cleanupTests
+}

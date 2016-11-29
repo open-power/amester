@@ -1,0 +1,141 @@
+# RBC.canvas.showimage.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the showimage 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.showimage
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.showimage {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the showimage command works correctly when given 1.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.showimage.A.1.1 {
+	    eps showimage: 1
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -showimage 1
+		.canvas1 itemcget 1 -showimage
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {1}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the element configure -showimage command works correctly when given 0.
+	# ------------------------------------------------------------------------------------
+	test RBC.canvas.showimage.A.1.2 {
+		eps showimage: 0
+	} -setup {
+		canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -showimage 0
+		.canvas1 itemcget 1 -showimage
+	} -cleanup {
+		.canvas1 delete 1
+		destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the element configure -showimage command works correctly when given true.
+	# ------------------------------------------------------------------------------------
+	test RBC.canvas.showimage.A.1.3 {
+		eps showimage: true
+	} -setup {
+		canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -showimage true
+		.canvas1 itemcget 1 -showimage
+	} -cleanup {
+		.canvas1 delete 1
+		destroy .canvas1
+	} -result {1}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the element configure -showimage command works correctly when given 
+	# false.
+	# ------------------------------------------------------------------------------------
+	test RBC.canvas.showimage.A.1.4 {
+		eps showimage: false
+	} -setup {
+		canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -showimage false
+		.canvas1 itemcget 1 -showimage
+	} -cleanup {
+		.canvas1 delete 1
+		destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the element configure -showimage command works correctly when given yes.
+	# ------------------------------------------------------------------------------------
+	test RBC.canvas.showimage.A.1.5 {
+		eps showimage: yes
+	} -setup {
+		canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -showimage yes
+		.canvas1 itemcget 1 -showimage
+	} -cleanup {
+		.canvas1 delete 1
+		destroy .canvas1
+	} -result {1}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the element configure -showimage command works correctly when given no.
+	# ------------------------------------------------------------------------------------
+	test RBC.canvas.showimage.A.1.6 {
+		eps showimage: no
+	} -setup {
+		canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -showimage no
+		.canvas1 itemcget 1 -showimage
+	} -cleanup {
+		.canvas1 delete 1
+		destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the element configure -showimage command works correctly when given an 
+	# invalid input value.
+	# ------------------------------------------------------------------------------------
+	test RBC.canvas.showimage.A.1.7 {
+		eps showimage: invalid input
+	} -setup {
+		canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -showimage invalid}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+		destroy .canvas1
+	} -result {0}
+	
+	cleanupTests
+}

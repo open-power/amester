@@ -1,0 +1,227 @@
+K 25
+svn:wc:ra_dav:version-url
+V 58
+/p/rbctoolkit/code/!svn/ver/31/trunk/rbc/manualtests/winop
+END
+RBC.winop.raise.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.raise.M.tcl
+END
+RBC.winop.query.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.query.M.tcl
+END
+RBC.winop.move.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.move.M.tcl
+END
+RBC.winop.resample.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.resample.M.tcl
+END
+sample.gif
+K 25
+svn:wc:ra_dav:version-url
+V 69
+/p/rbctoolkit/code/!svn/ver/31/trunk/rbc/manualtests/winop/sample.gif
+END
+lowerRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/lowerRunAll.tcl
+END
+RBC.winop.image.subsample.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 90
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.image.subsample.M.tcl
+END
+RBC.winop.map.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 78
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.map.M.tcl
+END
+convolveRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/convolveRunAll.tcl
+END
+subsampleRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 77
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/subsampleRunAll.tcl
+END
+RBC.winop.image.rotate.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 87
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.image.rotate.M.tcl
+END
+rain.gif
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/rain.gif
+END
+quantizeRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/quantizeRunAll.tcl
+END
+snapRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 72
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/snapRunAll.tcl
+END
+RBC.winop.lower.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.lower.M.tcl
+END
+RBC.winop.image.resample.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.image.resample.M.tcl
+END
+RBC.winop.subsample.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 84
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.subsample.M.tcl
+END
+RBC.winop.convolve.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.convolve.M.tcl
+END
+warptoRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 74
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/warptoRunAll.tcl
+END
+WinopRunAllSupportMethods.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/WinopRunAllSupportMethods.tcl
+END
+RBC.winop.quantize.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.quantize.M.tcl
+END
+RBC.winop.snap.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.snap.M.tcl
+END
+unmapRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/unmapRunAll.tcl
+END
+readjpegRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/readjpegRunAll.tcl
+END
+imageRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/imageRunAll.tcl
+END
+RBC.winop.warpto.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 81
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.warpto.M.tcl
+END
+RBC.winop.image.convolve.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.image.convolve.M.tcl
+END
+RBC.winop.image.gradient.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.image.gradient.M.tcl
+END
+RBC.winop.unmap.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.unmap.M.tcl
+END
+RBC.winop.readjpeg.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.readjpeg.M.tcl
+END
+RBC.winop.image.snap.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/winop/RBC.winop.image.snap.M.tcl
+END
+test.JPG
+K 25
+svn:wc:ra_dav:version-url
+V 66
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/test.JPG
+END
+raiseRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/raiseRunAll.tcl
+END
+queryRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 73
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/queryRunAll.tcl
+END
+moveRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 72
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/moveRunAll.tcl
+END
+resampleRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/resampleRunAll.tcl
+END
+mapRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 71
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/winop/mapRunAll.tcl
+END

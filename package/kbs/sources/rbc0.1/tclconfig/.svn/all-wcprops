@@ -1,0 +1,29 @@
+K 25
+svn:wc:ra_dav:version-url
+V 49
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/tclconfig
+END
+tcl.m4
+K 25
+svn:wc:ra_dav:version-url
+V 56
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/tclconfig/tcl.m4
+END
+ChangeLog
+K 25
+svn:wc:ra_dav:version-url
+V 59
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/tclconfig/ChangeLog
+END
+README.txt
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/tclconfig/README.txt
+END
+install-sh
+K 25
+svn:wc:ra_dav:version-url
+V 60
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/tclconfig/install-sh
+END

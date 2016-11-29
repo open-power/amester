@@ -1,0 +1,60 @@
+# RBC.eps.titlecolor.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the titlecolor 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.titlecolor
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.titlecolor {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the titlecolor command works properly when given a valid color name.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.titlecolor.A.1.1 {
+	    eps titlecolor: valid color
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -titlecolor blue
+		.canvas1 itemcget 1 -titlecolor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {blue}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the titlecolor command works properly when given an invalid color 
+	# name.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.titlecolor.A.1.2 {
+	    eps titlecolor: invalid color
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -titlecolor invalid}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	cleanupTests
+}

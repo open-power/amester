@@ -1,0 +1,10 @@
+This source files from this extension are from the [Kitgen] system (see
+README.kitgen), The following changes are made:
+
+* All building is done with the TEA build system.
+* Thread is used as a static extension because of the use of Thread_Init()
+  in the kitInit.c file.
+* setupvfs.tcl is modified for the new structure
+
+To build succesfull additional extensions are necessary (README.kitgen).
+

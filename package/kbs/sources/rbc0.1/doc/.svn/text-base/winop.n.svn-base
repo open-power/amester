@@ -1,0 +1,370 @@
+'\"
+'\" Copyright 1991-1997 by Bell Labs Innovations for Lucent Technologies.
+'\"
+'\" Permission to use, copy, modify, and distribute this software and its
+'\" documentation for any purpose and without fee is hereby granted, provided
+'\" that the above copyright notice appear in all copies and that both that the
+'\" copyright notice and warranty disclaimer appear in supporting documentation,
+'\" and that the names of Lucent Technologies any of their entities not be used
+'\" in advertising or publicity pertaining to distribution of the software
+'\" without specific, written prior permission.
+'\"
+'\" Lucent Technologies disclaims all warranties with regard to this software,
+'\" including all implied warranties of merchantability and fitness.  In no event
+'\" shall Lucent Technologies be liable for any special, indirect or
+'\" consequential damages or any damages whatsoever resulting from loss of use,
+'\" data or profits, whether in an action of contract, negligence or other
+'\" tortuous action, arising out of or in connection with the use or performance
+'\" of this software.  
+'\"
+'\" Window command created by George Howlett.
+'\"
+'\" The definitions below are for supplemental macros used in Tcl/Tk
+'\" manual entries.
+'\"
+'\" .AP type name in/out ?indent?
+'\"	Start paragraph describing an argument to a library procedure.
+'\"	type is type of argument (int, etc.), in/out is either "in", "out",
+'\"	or "in/out" to describe whether procedure reads or modifies arg,
+'\"	and indent is equivalent to second arg of .IP (shouldn't ever be
+'\"	needed;  use .AS below instead)
+'\"
+'\" .AS ?type? ?name?
+'\"	Give maximum sizes of arguments for setting tab stops.  Type and
+'\"	name are examples of largest possible arguments that will be passed
+'\"	to .AP later.  If args are omitted, default tab stops are used.
+'\"
+'\" .BS
+'\"	Start box enclosure.  From here until next .BE, everything will be
+'\"	enclosed in one large box.
+'\"
+'\" .BE
+'\"	End of box enclosure.
+'\"
+'\" .CS
+'\"	Begin code excerpt.
+'\"
+'\" .CE
+'\"	End code excerpt.
+'\"
+'\" .VS ?version? ?br?
+'\"	Begin vertical sidebar, for use in marking newly-changed parts
+'\"	of man pages.  The first argument is ignored and used for recording
+'\"	the version when the .VS was added, so that the sidebars can be
+'\"	found and removed when they reach a certain age.  If another argument
+'\"	is present, then a line break is forced before starting the sidebar.
+'\"
+'\" .VE
+'\"	End of vertical sidebar.
+'\"
+'\" .DS
+'\"	Begin an indented unfilled display.
+'\"
+'\" .DE
+'\"	End of indented unfilled display.
+'\"
+'\" .SO
+'\"	Start of list of standard options for a Tk widget.  The
+'\"	options follow on successive lines, in four columns separated
+'\"	by tabs.
+'\"
+'\" .SE
+'\"	End of list of standard options for a Tk widget.
+'\"
+'\" .OP cmdName dbName dbClass
+'\"	Start of description of a specific option.  cmdName gives the
+'\"	option's name as specified in the class command, dbName gives
+'\"	the option's name in the option database, and dbClass gives
+'\"	the option's class in the option database.
+'\"
+'\" .UL arg1 arg2
+'\"	Print arg1 underlined, then print arg2 normally.
+'\"
+'\" RCS: @(#) $Id: man.macros,v 1.3 2001/02/17 07:46:19 ghowlett Exp $
+'\"
+'\"	# Set up traps and other miscellaneous stuff for Tcl/Tk man pages.
+.if t .wh -1.3i ^B
+.nr ^l \n(.l
+.ad b
+'\"	# Start an argument description
+.de AP
+.ie !"\\$4"" .TP \\$4
+.el \{\
+.   ie !"\\$2"" .TP \\n()Cu
+.   el          .TP 15
+.\}
+.ta \\n()Au \\n()Bu
+.ie !"\\$3"" \{\
+\&\\$1	\\fI\\$2\\fP	(\\$3)
+.\".b
+.\}
+.el \{\
+.br
+.ie !"\\$2"" \{\
+\&\\$1	\\fI\\$2\\fP
+.\}
+.el \{\
+\&\\fI\\$1\\fP
+.\}
+.\}
+..
+'\"	# define tabbing values for .AP
+.de AS
+.nr )A 10n
+.if !"\\$1"" .nr )A \\w'\\$1'u+3n
+.nr )B \\n()Au+15n
+.\"
+.if !"\\$2"" .nr )B \\w'\\$2'u+\\n()Au+3n
+.nr )C \\n()Bu+\\w'(in/out)'u+2n
+..
+.AS Tcl_Interp Tcl_CreateInterp in/out
+'\"	# BS - start boxed text
+'\"	# ^y = starting y location
+'\"	# ^b = 1
+.de BS
+.br
+.mk ^y
+.nr ^b 1u
+.if n .nf
+.if n .ti 0
+.if n \l'\\n(.lu\(ul'
+.if n .fi
+..
+'\"	# BE - end boxed text (draw box now)
+.de BE
+.nf
+.ti 0
+.mk ^t
+.ie n \l'\\n(^lu\(ul'
+.el \{\
+.\"	Draw four-sided box normally, but don't draw top of
+.\"	box if the box started on an earlier page.
+.ie !\\n(^b-1 \{\
+\h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.el \}\
+\h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\l'|0u-1.5n\(ul'
+.\}
+.\}
+.fi
+.br
+.nr ^b 0
+..
+'\"	# VS - start vertical sidebar
+'\"	# ^Y = starting y location
+'\"	# ^v = 1 (for troff;  for nroff this doesn't matter)
+.de VS
+.if !"\\$2"" .br
+.mk ^Y
+.ie n 'mc \s12\(br\s0
+.el .nr ^v 1u
+..
+'\"	# VE - end of vertical sidebar
+.de VE
+.ie n 'mc
+.el \{\
+.ev 2
+.nf
+.ti 0
+.mk ^t
+\h'|\\n(^lu+3n'\L'|\\n(^Yu-1v\(bv'\v'\\n(^tu+1v-\\n(^Yu'\h'-|\\n(^lu+3n'
+.sp -1
+.fi
+.ev
+.\}
+.nr ^v 0
+..
+'\"	# Special macro to handle page bottom:  finish off current
+'\"	# box/sidebar if in box/sidebar mode, then invoked standard
+'\"	# page bottom macro.
+.de ^B
+.ev 2
+'ti 0
+'nf
+.mk ^t
+.if \\n(^b \{\
+.\"	Draw three-sided box if this is the box's first page,
+.\"	draw two sides but no top otherwise.
+.ie !\\n(^b-1 \h'-1.5n'\L'|\\n(^yu-1v'\l'\\n(^lu+3n\(ul'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.el \h'-1.5n'\L'|\\n(^yu-1v'\h'\\n(^lu+3n'\L'\\n(^tu+1v-\\n(^yu'\h'|0u'\c
+.\}
+.if \\n(^v \{\
+.nr ^x \\n(^tu+1v-\\n(^Yu
+\kx\h'-\\nxu'\h'|\\n(^lu+3n'\ky\L'-\\n(^xu'\v'\\n(^xu'\h'|0u'\c
+.\}
+.bp
+'fi
+.ev
+.if \\n(^b \{\
+.mk ^y
+.nr ^b 2
+.\}
+.if \\n(^v \{\
+.mk ^Y
+.\}
+..
+'\"	# DS - begin display
+.de DS
+.RS
+.nf
+.sp
+..
+'\"	# DE - end display
+.de DE
+.fi
+.RE
+.sp
+..
+'\"	# SO - start of list of standard options
+.de SO
+.SH "STANDARD OPTIONS"
+.LP
+.nf
+.ta 4c 8c 12c
+.ft B
+..
+'\"	# SE - end of list of standard options
+.de SE
+.fi
+.ft R
+.LP
+See the \\fBoptions\\fR manual entry for details on the standard options.
+..
+'\"	# OP - start of full description for a single option
+.de OP
+.LP
+.nf
+.ta 4c
+Command-Line Name:	\\fB\\$1\\fR
+Database Name:	\\fB\\$2\\fR
+Database Class:	\\fB\\$3\\fR
+.fi
+.IP
+..
+'\"	# CS - begin code excerpt
+.de CS
+.RS
+.nf
+.ta .25i .5i .75i 1i
+.ft CW
+.sp
+..
+'\"	# CE - end code excerpt
+.de CE
+.fi
+.RE
+.ft R
+.sp
+..
+.de UL
+\\$1\l'|0\(ul'\\$2
+..
+.TH winop n 2.4 BLT "BLT Built-In Commands"
+.BS
+'\" Note:  do not modify the .SH NAME line immediately below!
+.SH NAME
+winop \- Perform assorted window operations
+.SH SYNOPSIS
+\fBwinop lower\fR ?\fIwindow\fR?...
+.sp
+\fBwinop map\fR ?\fIwindow\fR?...
+.sp
+\fBwinop move \fIwindow x y\fR
+.sp
+\fBwinop raise\fR ?\fIwindow\fR?...
+.sp
+\fBwinop snap \fIwindow photoName\fR
+.sp
+\fBwinop unmap\fR ?\fIwindow\fR?...
+.sp
+\fBwinop warpto\fR ?\fIwindow\fR?
+.BE
+.SH DESCRIPTION
+The \fBwinop\fR command performs various window operations on Tk
+windows using low-level Xlib function calls to work around window
+manager pecularities.
+.SH INTRODUCTION
+Tk has several commands for manipulating its windows: \fBraise\fR,
+\fBlower\fR, \fBwm\fR, etc.  These commands ask the window manager to
+perform operations on Tk windows.  In some cases, a particular window
+manager won't perform the operation as expected.
+.PP
+For example, if you positioned a toplevel window using \fBwm geometry\fR,
+the window may not actually be at those particular coordinates.  The
+position of the window may be offset by dimensions of the title bar added
+by the window manager.  
+.PP
+In situations like these, the \fBwinop\fR command can be used to
+workaround these difficulties.  Instead, it makes low-level Xlib
+(such \fBXRaiseWindow\fR and \fBXMapWindow\fR) calls to perform these
+operations.
+.CS
+toplevel .top
+wm withdraw .top
+
+# Set the geometry to make the window manager 
+# place the window.
+wm geometry .top +100+100
+
+# Move the window to the desired location
+# and "update" to force the window manager
+# to recognize it.
+winop move .top 100 100
+update 
+
+wm deiconify .top
+winop move .top 100 100
+.CE
+.SH OPERATIONS
+The following operations are available for the \fBwinop\fR command:
+.TP
+\fBwinop lower\fR ?\fIwindow\fR?...
+Lowers \fIwindow\fR to the bottom of the X window stack.  \fIWindow\fR is
+the path name of a Tk window.  
+.TP
+\fBwinop map\fR ?\fIwindow\fR?...
+Maps \fIwindow\fR on the screen.  \fIWindow\fR
+is the path name of a Tk window. If \fIwindow\fR is already mapped,
+this command has no effect.  
+.TP
+\fBwinop move \fIwindow x y\fR
+Move \fIwindow\fR to the screen location specified by \fIx\fR
+and \fIy\fR. \fIWindow\fR is the path name of a Tk window, while
+\fIx\fR and \fIy\fR are screen coordinates.  This command returns 
+the empty string.
+.TP
+\fBwinop raise\fR ?\fIwindow\fR?...
+Raises \fIwindow\fR to the top of the X window stack. \fIWindow\fR must be
+a valid path name of a Tk window.  This command returns the empty string.
+.TP
+\fBwinop snap \fIwindow photoName\fR
+Takes a snapshot of the \fIwindow\fR and stores the contents in the
+photo image \fIphotoName\fR. \fIWindow\fR is the valid path name of a
+Tk window which must be totally visible (unobscured).  \fIPhotoName\fR
+is the name of a Tk photo image which must already exist.  This command
+can fail if the window is obscured in any fashion, such as covered by 
+another window or partially offscreen.  In that case, an error message
+is returned.
+.TP
+\fBwinop unmap\fR ?\fIwindow\fR?...
+Unmaps \fIwindow\fR from the screen. \fIWindow\fR is the path name of a Tk
+window. 
+.TP
+\fBwinop warpto\fR ?\fIwindow\fR?
+Warps the pointer to \fIwindow\fR. \fIWindow\fR is the path name of a Tk window
+which must be mapped. If \fIwindow\fR is in the form \fI@x,y\fR, where
+\fIx\fR and \fIy\fR are root screen coordinates, the pointer is warped to
+that location on the screen.
+.sp
+[\fII've never heard a good case for warping the pointer in an
+application.  It can be useful for testing, but in applications, it's
+always a bad idea.  Simply stated, the user owns the pointer, not the
+application.  If you have an application that needs it, I'd like to
+hear about it.\fR]
+.sp
+If no \fIwindow\fR argument is present the current location of the
+pointer is returned. The location is returned as a list in the form
+"\fIx y\fR", where \fIx\fR and \fIy\fR are the current coordinates of
+the pointer.
+.SH KEYWORDS
+window, map, raise, lower, pointer, warp

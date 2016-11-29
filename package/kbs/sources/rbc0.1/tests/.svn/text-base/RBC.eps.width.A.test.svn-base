@@ -1,0 +1,129 @@
+# RBC.eps.width.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the width 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.width
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.width {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the width configuration works properly.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.width.A.1.1 {
+	    eps width: valid integer input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+	    .canvas1 itemconfigure 1 -width 20
+	    .canvas1 itemcget 1 -width
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {20}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the width configuration works for invalid integer input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.width.A.1.2 {
+	    eps width: invalid integer input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+	    if {[catch {.canvas1 itemconfigure 1 -width -20}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the width configuration works for valid decimal input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.width.A.1.3 {
+	    eps width: valid decimal input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0  
+	} -body {
+	    .canvas1 itemconfigure 1 -width 20.5
+	    .canvas1 itemcget 1 -width
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {21}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the width configuration works for invalid decimal input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.width.A.1.4 {
+	    eps width: invalid decimal input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0  
+	} -body {
+	    if {[catch {.canvas1 itemconfigure 1 -width -20.5}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the width configuration works for character input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.width.A.1.5 {
+	    eps width: character input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0  
+	} -body {
+	    if {[catch {.canvas1 itemconfigure 1 -width invalid}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the width configuration works when given 0 as input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.width.A.1.6 {
+	    eps width: 0
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0  
+	} -body {
+	    .canvas1 itemconfigure 1 -width 0
+	    .canvas1 itemcget 1 -width
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	cleanupTests
+}

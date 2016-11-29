@@ -1,0 +1,132 @@
+2009-11-19  Rene Zaumseil <r.zaumseil@freenet.de>
+	Released version 0.4
+	* kbskit.kbs: moved into kbs.tcl
+	* win/tclkit.rc:
+	- used kbs for descriptions
+	* kbspkg.vfs/: removed
+2009-05-09  Rene Zaumseil <r.zaumseil@freenet.de>
+	Released version 0.3.1
+	* kbskit.kbs:
+	changed:
+	- tcl/tk 8.5.7
+	- sqlite 3.6.12
+	- tablelist 4.11
+	- treectrl 2.2.8
+	- tksqlite 0.5.8
+	new:
+	- tls1.6
+	- expect5.44
+	fixed:
+	- itcl3.4 itk3.4 using kbs build of tcl/tk
+	  Thanks to christian.gollwitzer@uni-bayreuth.de
+	new package sourceforge.net files: sf.net
+	* library/setupvfs.tcl:
+	- windows tweaks
+	* library/boot.tcl:
+	- changes for tcl 8.6b1
+2009-02-17  Rene Zaumseil <r.zaumseil@freenet.de>
+	Released version 0.3
+	* kbskit/kbskit.kbs:
+	- changed 'Package' format:
+	  Package <name> {
+	    Require script
+	    Source script
+	    Configure script
+	    Make script
+	    Install script
+	    Clean script
+	    Test script
+	  }
+	- install dirs have same name as source dirs (needed for '-bi')
+	- new/changed internal proc's:
+	  Run and Get for all targets
+	  Link, Script, Http, Tgz, Zip, Cvs, Svn in Source
+	  Patch, Kit in Configure
+	  Kit in Make
+	  Libdir, Kit, Tcl in Install
+	  Kit in Test
+	* kbskit/kbskit.kbs:
+	- gridplus 2.4
+	- itcl 4.0b3
+	- tklib 0.5
+	- sqlite 3.6.10
+	* kbskit/kbskit.kbs:
+	* kbskit/configure.in:
+	* kbskit/configure:
+	* kbskit/Makefile.in:
+	* kbskit/library/setupvfs.tcl:
+	- support of vlerq and metakit builds -> changed output file names!
+	- used internal zlib for tcl8.6
+	- added all tcl packages (msgcat,...) in kitfiles
+	* kbskit/kbspkg.vfs/main.tcl:
+	- added options list, load and help message
+	* kbskit/generic/pwb.c: removed
+	* kbskit/library/config.tcl: removed
+2009-01-11  Rene Zaumseil <r.zaumseil@freenet.de>
+	Released version 0.2.6
+	* kbskit/kbskit.kbs: changed
+	- tcl/tk 8.6b1
+	- tcl/tk 8.5.6
+	- sqlite 3.6.7
+	- tcllib 1.11.1
+	- tcloo 0.6
+	- tktable 2.10
+	- vfs 1.4
+	- xotcl 1.6.2
+	- thread HEAD (post 2.6.5)
+	* kbskit/library/vfs1.4-pkgIndex.tcl: new
+	* kbskit/library/setupvfs.tcl: removed obsolete files
+	* kbskit/generic/kitInit.c: changed internal tcl function usage
+2008-10-16  Rene Zaumseil <r.zaumseil@freenet.de>
+	Released version 0.2.5
+	* kbskit/kbskit.kbs: changed
+	- tcl/tk 8.6a3
+	- tcl/tk 8.5.5
+	- sqlite 3.6.3
+	- tablelist 4.10
+	- mentry 3.2
+	* kbskit/library/setupvfs.tcl kbskit/library/vfs1.3-pkgIndex.tcl:
+	- addded available vfs types
+2008-08-27  Rene Zaumseil <r.zaumseil@freenet.de>
+	* kbskit.kbs: changed
+	- tcl/tk 8.6a2
+	- tcl/tk 8.5.4
+	- xotcl 1.6.1
+2008-07-02  Rene Zaumseil <r.zaumseil@freenet.de>
+	* library/tk8.5-pkgIndex.tcl: version independent
+	* library/tk8.5-pkgIndex.tcl: new for 8.6
+	* kbskit.kbs: added
+	- tcl/tk 8.6a1
+	- tcloo-0.4
+	* kbskit.kbs: changed
+	- tcl/tk 8.5.3
+	- gridplus 2.3
+	- ral 0.8.8
+	- tablelist 4.9
+	- sqlite 3.5.9
+2008-02-04  Rene Zaumseil <r.zaumseil@freenet.de>
+	* library/tk8.5-pkgIndex.tcl:
+	- use tk 8.5.2
+	* kbskit.kbs: added
+	- itcl-3.4, itk-3.4, iwidgets-4.0.2
+	* kbskit.kbs: changed
+	- tcl/tk 8.5.2
+	- sqlite 3.5.7
+2008-02-28  Rene Zaumseil <r.zaumseil@freenet.de>
+	* library/tk8.5-pkgIndex.tcl:
+	- use tk 8.5.1
+	* kbskit.kbs:
+	- use of tcl/tk 8.5.1
+	- added tkcon
+	- added ral 0.8.7
+	- added tkpath 0.2.8 (not in kbspkg files because of needed other libs)
+2007-12-20  Rene Zaumseil <r.zaumseil@freenet.de>
+	* library/tk8.5-pkgIndex.tcl:
+	- use tk 8.5
+	* kbskit.kbs:
+	- use tcl/tk 8.5
+	- tksqlite 0.5.6
+	- sqlite 3.5.4
+2007-11-22  Rene Zaumseil <r.zaumseil@freenet.de>
+	- added to kbskit.sourceforge.net
+

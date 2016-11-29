@@ -1,0 +1,19 @@
+/ChangeLog/1.216/Mon Nov 28 19:48:12 2011//D2012.01.10.06.00.00
+/DESCRIPTION.txt/1.4/Mon Oct 13 11:15:51 2003//D2012.01.10.06.00.00
+/Makefile.in/1.31/Mon Feb  1 07:32:58 2010//D2012.01.10.06.00.00
+/README.cygwin/1.5/Tue Jan 28 13:09:20 2003//D2012.01.10.06.00.00
+/Readme.txt/1.19/Tue Feb  4 16:36:30 2003//D2012.01.10.06.00.00
+/aclocal.m4/1.2/Thu Sep 26 02:12:46 2002//D2012.01.10.06.00.00
+/configure/1.28/Fri Feb  6 19:13:27 2009//D2012.01.10.06.00.00
+/configure.in/1.19/Fri Feb  6 19:13:27 2009//D2012.01.10.06.00.00
+/license.terms/1.1.1.1/Fri Aug  3 16:19:00 2001//D2012.01.10.06.00.00
+/make55.tcl/1.2/Tue Jul 15 17:42:34 2003//D2012.01.10.06.00.00
+/pkgIndex.tcl.in/1.20/Thu Dec 30 07:59:31 2010//D2012.01.10.06.00.00
+D/doc////
+D/examples////
+D/generic////
+D/http2.6////
+D/library////
+D/tclconfig////
+D/tests////
+D/win////

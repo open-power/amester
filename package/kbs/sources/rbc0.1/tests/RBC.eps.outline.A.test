@@ -1,0 +1,59 @@
+# RBC.eps.outline.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the outline 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.outline
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.outline {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the outline command works properly when given a valid color name.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.outline.A.1.1 {
+	    eps outline: valid color
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -outline blue
+		.canvas1 itemcget 1 -outline
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {blue}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the outline command works properly when given an invalid color name.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.outline.A.1.2 {
+	    eps outline: invalid color
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -outline invalid}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	cleanupTests
+}

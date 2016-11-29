@@ -1,0 +1,187 @@
+# RBC.eps.titleanchor.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the titleanchor 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.titleanchor
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.titleanchor {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the titleanchor command works properly when given 'n' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.titleanchor.A.1.1 {
+	    eps titleanchor: n
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -titleanchor n
+		.canvas1 itemcget 1 -titleanchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {n}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the titleanchor command works properly when given 'ne' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.titleanchor.A.1.2 {
+	    eps titleanchor: ne
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -titleanchor ne
+		.canvas1 itemcget 1 -titleanchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {ne}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the titleanchor command works properly when given 'e' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.titleanchor.A.1.3 {
+	    eps titleanchor: e
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -titleanchor e
+		.canvas1 itemcget 1 -titleanchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {e}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the titleanchor command works properly when given 'se' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.titleanchor.A.1.4 {
+	    eps titleanchor: se
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -titleanchor se
+		.canvas1 itemcget 1 -titleanchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {se}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the titleanchor command works properly when given 's' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.titleanchor.A.1.5 {
+	    eps titleanchor: s
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -titleanchor s
+		.canvas1 itemcget 1 -titleanchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {s}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the titleanchor command works properly when given 'sw' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.titleanchor.A.1.6 {
+	    eps titleanchor: sw
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -titleanchor sw
+		.canvas1 itemcget 1 -titleanchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {sw}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the titleanchor command works properly when given 'w' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.titleanchor.A.1.7 {
+	    eps titleanchor: w
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -titleanchor w
+		.canvas1 itemcget 1 -titleanchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {w}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the titleanchor command works properly when given 'nw' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.titleanchor.A.1.8 {
+	    eps titleanchor: nw
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -titleanchor nw
+		.canvas1 itemcget 1 -titleanchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {nw}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the titleanchor command works properly when given 'center' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.titleanchor.A.1.9 {
+	    eps titleanchor: center
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -titleanchor center
+		.canvas1 itemcget 1 -titleanchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {center}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the titleanchor command works properly when given an invalid string.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.titleanchor.A.1.10 {
+	    eps titleanchor: invalid string
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -titleanchor invalid}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	cleanupTests
+}

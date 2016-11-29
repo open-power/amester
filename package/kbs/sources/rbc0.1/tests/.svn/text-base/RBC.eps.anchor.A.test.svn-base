@@ -1,0 +1,208 @@
+# RBC.eps.anchor.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the anchor 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.anchor
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.anchor {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the anchor command works properly when given 'n' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.anchor.A.1.1 {
+	    eps anchor: n
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -anchor n
+		.canvas1 itemcget 1 -anchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {n}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the anchor command works properly when given 'ne' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.anchor.A.1.2 {
+	    eps anchor: ne
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -anchor ne
+		.canvas1 itemcget 1 -anchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {ne}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the anchor command works properly when given 'e' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.anchor.A.1.3 {
+	    eps anchor: e
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -anchor e
+		.canvas1 itemcget 1 -anchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {e}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the anchor command works properly when given 'se' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.anchor.A.1.4 {
+	    eps anchor: se
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -anchor se
+		.canvas1 itemcget 1 -anchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {se}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the anchor command works properly when given 's' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.anchor.A.1.5 {
+	    eps anchor: s
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -anchor s
+		.canvas1 itemcget 1 -anchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {s}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the anchor command works properly when given 'sw' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.anchor.A.1.6 {
+	    eps anchor: sw
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -anchor sw
+		.canvas1 itemcget 1 -anchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {sw}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the anchor command works properly when given 'w' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.anchor.A.1.7 {
+	    eps anchor: w
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -anchor w
+		.canvas1 itemcget 1 -anchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {w}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the anchor command works properly when given 'nw' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.anchor.A.1.8 {
+	    eps anchor: nw
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -anchor nw
+		.canvas1 itemcget 1 -anchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {nw}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the anchor command works properly when given 'center' as input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.anchor.A.1.9 {
+	    eps anchor: center
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -anchor center
+		.canvas1 itemcget 1 -anchor
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {center}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the anchor command works properly when given invalid character 
+	# input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.anchor.A.1.10 {
+	    eps anchor: invalid character input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -anchor invalid}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the anchor command works properly when given invalid numerical  
+	# input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.anchor.A.1.11 {
+	    eps anchor: invalid numerical input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		if {[catch {.canvas1 itemconfigure 1 -anchor 10}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	cleanupTests
+}

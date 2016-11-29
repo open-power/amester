@@ -1,0 +1,123 @@
+# RBC.eps.titlerotate.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the titlerotate 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.titlerotate
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.titlerotate {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the titlerotate configuration works for positive integer input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.titlerotate.A.1.1 {
+	    eps titlerotate: valid integer input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+	    .canvas1 itemconfigure 1 -titlerotate 20
+	    .canvas1 itemcget 1 -titlerotate
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {20.0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the titlerotate configuration works for negative integer input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.titlerotate.A.1.2 {
+	    eps titlerotate: invalid integer input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+	    .canvas1 itemconfigure 1 -titlerotate -20
+		.canvas1 itemcget 1 -titlerotate
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {-20.0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the titlerotate configuration works for positive decimal input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.titlerotate.A.1.3 {
+	    eps titlerotate: valid decimal input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0  
+	} -body {
+	    .canvas1 itemconfigure 1 -titlerotate 20.5
+	    .canvas1 itemcget 1 -titlerotate
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {20.5}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the titlerotate configuration works for negative decimal input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.titlerotate.A.1.4 {
+	    eps titlerotate: invalid decimal input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0  
+	} -body {
+	    .canvas1 itemconfigure 1 -titlerotate -20.5
+		.canvas1 itemcget 1 -titlerotate
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {-20.5}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the titlerotate configuration works for character input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.titlerotate.A.1.5 {
+	    eps titlerotate: character input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0  
+	} -body {
+	    if {[catch {.canvas1 itemconfigure 1 -titlerotate invalid}]} {
+			return 0
+		} else {
+			return 1
+		}
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure that the titlerotate configuration works when given 0 as input.
+	# ------------------------------------------------------------------------------------
+	test RBC.eps.titlerotate.A.1.6 {
+	    eps titlerotate: 0
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0  
+	} -body {
+	    .canvas1 itemconfigure 1 -titlerotate 0
+	    .canvas1 itemcget 1 -titlerotate
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {0.0}
+	
+	cleanupTests
+}

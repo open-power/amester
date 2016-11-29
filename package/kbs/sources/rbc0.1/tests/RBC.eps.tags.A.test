@@ -1,0 +1,56 @@
+# RBC.eps.tags.A.test --
+#
+###Abstract
+# This file contains the automatic tests that test the tags 
+# function of the eps BLT component.
+#
+###Copyright
+# See the file "license.terms" for information on usage and
+# redistribution of this file, and for a DISCLAIMER OF ALL WARRANTIES.
+#
+###Revision String
+# SVN: $Id$
+
+###Package Definition
+package provide eps.tags
+
+package require rbc
+namespace import rbc::*
+
+package require tcltest
+namespace import tcltest::*
+namespace eval eps.tags {
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the tags command works properly when given a single input.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.tags.A.1.1 {
+	    eps tags: single input
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -tags input1
+		.canvas1 itemcget 1 -tags
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {input1}
+	
+	# ------------------------------------------------------------------------------------
+	# Purpose: Ensure the tags command works properly when given multiple inputs.
+	# ------------------------------------------------------------------------------------ 
+	test RBC.eps.tags.A.1.2 {
+	    eps tags: multiple inputs
+	} -setup {
+	    canvas .canvas1
+		.canvas1 create eps 0 0
+	} -body {
+		.canvas1 itemconfigure 1 -tags {input1 input2 input3}
+		.canvas1 itemcget 1 -tags
+	} -cleanup {
+		.canvas1 delete 1
+	    destroy .canvas1
+	} -result {input1 input2 input3}
+	
+	cleanupTests
+}

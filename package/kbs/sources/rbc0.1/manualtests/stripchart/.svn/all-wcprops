@@ -1,0 +1,389 @@
+K 25
+svn:wc:ra_dav:version-url
+V 63
+/p/rbctoolkit/code/!svn/ver/48/trunk/rbc/manualtests/stripchart
+END
+RBC.stripchart.legend.get.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.legend.get.M.tcl
+END
+gridRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 77
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/gridRunAll.tcl
+END
+RBC.stripchart.configure.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.configure.M.tcl
+END
+RBC.stripchart.pen.delete.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 95
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.pen.delete.M.tcl
+END
+RBC.stripchart.axis.configure.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.axis.configure.M.tcl
+END
+extentsRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/extentsRunAll.tcl
+END
+RBC.stripchart.marker.configure.common.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.marker.configure.common.M.tcl
+END
+RBC.stripchart.element.activate.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.element.activate.M.tcl
+END
+RBC.stripchart.crosshairs.off.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.crosshairs.off.M.tcl
+END
+RBC.stripchart.element.delete.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.element.delete.M.tcl
+END
+RBC.stripchart.element.create.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.element.create.M.tcl
+END
+RBC.stripchart.axis.invtransform.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.axis.invtransform.M.tcl
+END
+snapRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 77
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/snapRunAll.tcl
+END
+RBC.stripchart.legend.activate.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.legend.activate.M.tcl
+END
+axisRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 77
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/axisRunAll.tcl
+END
+greenback.xbm
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/greenback.xbm
+END
+RBC.stripchart.bar.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 88
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.bar.M.tcl
+END
+RBC.stripchart.legend.deactivate.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.legend.deactivate.M.tcl
+END
+insideRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/insideRunAll.tcl
+END
+RBC.stripchart.postscript.output.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.postscript.output.M.tcl
+END
+RBC.stripchart.transform.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.transform.M.tcl
+END
+RBC.stripchart.inside.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 91
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.inside.M.tcl
+END
+crosshairsRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/crosshairsRunAll.tcl
+END
+RBC.stripchart.axis.transform.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.axis.transform.M.tcl
+END
+RBC.stripchart.legend.configure.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 101
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.legend.configure.M.tcl
+END
+RBC.stripchart.axis.bind.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 94
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.axis.bind.M.tcl
+END
+invtransformRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 85
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/invtransformRunAll.tcl
+END
+elementRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 80
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/elementRunAll.tcl
+END
+RBC.stripchart.marker.configure.polygon.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 109
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.marker.configure.polygon.M.tcl
+END
+RBC.stripchart.grid.off.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 93
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.grid.off.M.tcl
+END
+barRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/barRunAll.tcl
+END
+RBC.stripchart.crosshairs.toggle.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.crosshairs.toggle.M.tcl
+END
+RBC.stripchart.element.closest.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 100
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.element.closest.M.tcl
+END
+RBC.stripchart.grid.configure.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 99
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.grid.configure.M.tcl
+END
+RBC.stripchart.grid.toggle.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.grid.toggle.M.tcl
+END
+postscriptRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 83
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/postscriptRunAll.tcl
+END
+stopsign.gif
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/stopsign.gif
+END
+buckskin.gif
+K 25
+svn:wc:ra_dav:version-url
+V 75
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/buckskin.gif
+END
+RBC.stripchart.marker.configure.bitmap.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.marker.configure.bitmap.M.tcl
+END
+penRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 76
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/penRunAll.tcl
+END
+RBC.stripchart.marker.configure.image.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 107
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.marker.configure.image.M.tcl
+END
+RBC.stripchart.marker.configure.line.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.marker.configure.line.M.tcl
+END
+RBC.stripchart.crosshairs.on.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.crosshairs.on.M.tcl
+END
+RBC.stripchart.marker.bind.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.marker.bind.M.tcl
+END
+StripchartRunAllSupportMethods.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/p/rbctoolkit/code/!svn/ver/48/trunk/rbc/manualtests/stripchart/StripchartRunAllSupportMethods.tcl
+END
+RBC.stripchart.crosshairs.configure.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 105
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.crosshairs.configure.M.tcl
+END
+RBC.stripchart.grid.on.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.grid.on.M.tcl
+END
+RBC.stripchart.snap.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 89
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.snap.M.tcl
+END
+RBC.stripchart.element.deactivate.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 103
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.element.deactivate.M.tcl
+END
+RBC.stripchart.pen.configure.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.pen.configure.M.tcl
+END
+RBC.stripchart.element.show.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.element.show.M.tcl
+END
+markerRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/markerRunAll.tcl
+END
+configureRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/configureRunAll.tcl
+END
+RBC.stripchart.marker.delete.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.marker.delete.M.tcl
+END
+RBC.stripchart.marker.create.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 98
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.marker.create.M.tcl
+END
+RBC.stripchart.marker.configure.text.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 106
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.marker.configure.text.M.tcl
+END
+RBC.stripchart.invtransform.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.invtransform.M.tcl
+END
+legendRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 79
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/legendRunAll.tcl
+END
+RBC.stripchart.extents.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 92
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.extents.M.tcl
+END
+RBC.stripchart.element.bind.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 97
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.element.bind.M.tcl
+END
+transformRunAll.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 82
+/p/rbctoolkit/code/!svn/ver/1/trunk/rbc/manualtests/stripchart/transformRunAll.tcl
+END
+RBC.stripchart.marker.configure.window.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 108
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.marker.configure.window.M.tcl
+END
+RBC.stripchart.element.configure.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 102
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.element.configure.M.tcl
+END
+RBC.stripchart.legend.bind.M.tcl
+K 25
+svn:wc:ra_dav:version-url
+V 96
+/p/rbctoolkit/code/!svn/ver/29/trunk/rbc/manualtests/stripchart/RBC.stripchart.legend.bind.M.tcl
+END
