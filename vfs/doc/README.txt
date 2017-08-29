@@ -3,6 +3,12 @@
 Automated Measurement of Systems for Temperature and Energy Reporting
 README
 
+Version 7.1
+Release 2017-08-29
+
+Update to work with P9 Boston system.
+
+
 Version 7.0
 Release 2016-04-01
 
@@ -137,19 +143,19 @@ Changes in version 5.39  2013-5-28
 -- Use LUN byte in host class to specify OCC number for P8.
 -- GUI changes
     Added a cascade for each node found on the connecting target system (P8). Each
-    node can have more than one AME objects depending on the number of OCC instances 
-    found on each node. 
+    node can have more than one AME objects depending on the number of OCC instances
+    found on each node.
       add_node_gui_menu
     Removed "Options", "Power Control", and "Performance Control" functions (P8
     system only.)
 -- Changes for AME API 2.26
     Added function to find OCC instance on a target node with netfn 0x2E and cmd 0x3D
       aem_find_occ_instance
-    Added function to init AME object with rssa and occ_list as input   
-      init_ameocc_objects 
+    Added function to init AME object with rssa and occ_list as input
+      init_ameocc_objects
     Added OCC instance number as the first byte of data field for all request packet
-    with netfn 0x3A and cmd 0x3C/0x3B  
-         
+    with netfn 0x3A and cmd 0x3C/0x3B
+
 
 Changes in version 5.38  2012-12-12
 -- Better error messages in trace buffer configuration
@@ -165,10 +171,10 @@ Changes in version 5.38  2012-12-12
      gui_add_parm_by_object
      gui_add_cols
 -- Temporary files directory uses PID and UNIX seconds in name to be unique.
-     
+
 
 Changes in version 5.37  2012-02-13
--- Fix "ERROR: ::myfsp_ame0 sensor_watch_callback status=-1 data=" caused when 
+-- Fix "ERROR: ::myfsp_ame0 sensor_watch_callback status=-1 data=" caused when
    TPMD/network fails during sensor gathering. Now retries to get sensors.
 -- Press <Enter> in IP address entry of netc connection GUI to start the connection.
 -- Can now specify the parent window of a data object graph.
@@ -195,7 +201,7 @@ Changes in version 5.33
 -- Use fonts that are installed on most IBM systems.
 -- Remove legend from sensor graphs that only have 1 sensor.
 
-Changes in version 5.32 
+Changes in version 5.32
 -- Allow tool to connect to POWER systems using the HMC account
    password by using the NETC protocol "MSGP" tool method.
 -- Update manual with examples of how to connect to POWER
@@ -276,7 +282,7 @@ Changes in version 5.21
    There are no signed sensors in POWER7 yet.
 -- Add "Clear min/max" button to sensor window
 -- Add Parameter GUI to show/edit values
--- Remove getting number of processors. 
+-- Remove getting number of processors.
    This has not been supported in AME/TPMD firmware for awhile.
 -- Fix link up/down in GUI for netc (POWER FSP)
 
@@ -321,10 +327,10 @@ Changes in version 5.15
 Changes in version 5.14
 -- Fix bug causing all output to freeze until sensor window was displayed.
 -- Fix bug causing nothing to happen when a "select" button is clicked.
-   (Converted multiselect windows to itcl to enable multiple multiselects 
+   (Converted multiselect windows to itcl to enable multiple multiselects
    to be active at the same time.  Multiselect is now a GUI element package
    that can be used in user scripts.)
--- Add more synchronous commands for histogram configuration to 
+-- Add more synchronous commands for histogram configuration to
    avoid the problem of reading the histogram before it is configured.
 
 Changes in version 5.13
@@ -355,9 +361,9 @@ Changes in version 5.10
 -- AME v2.16 changes
    - Add GUI for controling AME performance parameters
     (manual override and speed setpoint)
-   - Add many *_sync access methods for power control parameters which wait 
+   - Add many *_sync access methods for power control parameters which wait
      until IPMI command has finished before returning.
-   - Add many *_get access methods to return AME object variables.  These synchronize 
+   - Add many *_get access methods to return AME object variables.  These synchronize
      with the AME firmware and return the most recent value in the firmware.
 -- Add bc::get_ambient_temp_sync to return ambient temperature from management module.
 -- Add netc object for accessing AME functions on HV8 systems
@@ -366,7 +372,7 @@ Changes in version 5.10
 
 Changes in version 5.9
 - Upgrade to dqkit-0.10 which includes Tcl 8.4.13
-- dqkit is no longer provided in tool CVS due to licensing issues. 
+- dqkit is no longer provided in tool CVS due to licensing issues.
   It is downloaded in the Makefile.
 - "wget" must be installed to make the tool executable.
 - Include Common Public License in LICENSE file.
@@ -381,8 +387,8 @@ Changes in version 5.8
 -- New IPMI commands that combine many old ones
 - Scope API 2.16 sends back the pm_state that is used
 - Speedup initialization of a 28 blade cluster by over 20x.
--- If a new server is the same type and firmware level, assume 
-   it has an identical sensor configuration (Reduce number of 
+-- If a new server is the same type and firmware level, assume
+   it has an identical sensor configuration (Reduce number of
    IPMI commands when tool connects)
 - Added scrollbars to main window
 - Choose unique color/dash/symbol patterns for each server for
@@ -410,7 +416,7 @@ Changes in version 5.4
 - Improvements to histogram/timeseries window (API 2.14)
    - Print x,y of point nearest to cursor
    - Switch between histogram and timeseries modes
-   - Loose axis numbers for timeseries 
+   - Loose axis numbers for timeseries
 - Arrow keys move throught histogram/timeseries window data when cursor is inthe window
 - tool manual is available by "help" command and menu option.
 
@@ -429,7 +435,7 @@ Changes in version 5.1
 - Add many accessor methods for blade, amec, and sensor objects.
 - Add "wait" method to sensor to pause program and wait for update to
   a sensor value or vector
-- Add "get histogram" method to sensor to get histogram values and 
+- Add "get histogram" method to sensor to get histogram values and
   bins names.
 - Fix bugs in code that reads AME histograms (bugs introduced in 5.0)
 - Show machine-type-model and MAC address in main window for each blade.

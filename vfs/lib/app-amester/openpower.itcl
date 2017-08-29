@@ -11,7 +11,7 @@
 if {$::options(gui)} {
     .mbar.file.menu.connect add command -label "OpenPOWER..." -command "openpowerconnect \#auto"
 }
- 
+
 class openpowerconnect {
     public variable name "myopenpower"
     public variable ipmi_user "ADMIN"
@@ -53,7 +53,7 @@ body openpowerconnect::make_gui {} {
 
     toplevel $window
     wm title $window $win_title
-    
+
     label $window.name_l -text "System name" -anchor w
     entry $window.name -textvariable [scope name]
     grid $window.name_l $window.name -sticky news -row 0
@@ -77,7 +77,7 @@ body openpowerconnect::make_gui {} {
 
     checkbutton $window.close -text "Close this window after connecting" -variable [scope close]
     grid $window.close -row 6 -sticky w
-    
+
     button $window.connect -text "Connect" -command [code $this connect] -background lightblue
     grid $window.connect -row 8 -sticky news
 }
@@ -97,7 +97,7 @@ body openpowerconnect::connect {} {
     catch {$window.connect configure -state normal}
 }
 
- 
+
 class openpower {
     inherit host
 
@@ -105,7 +105,7 @@ class openpower {
     public variable ipmi_user ""
     public variable ipmi_passwd ""
     public variable ipmi_ipmitool "ipmitool"
-    
+
     #Parameters
     protected variable vpdversion ""
     protected variable mtm ""
@@ -148,7 +148,7 @@ class openpower {
 
 	if {$::options(gui)} {host_window_update a b c}
     }
-    
+
     destructor {
 	::amesterdebug::debug openpower "$this destructor"
 	#FIXME: delete GUI associated with openpower
@@ -208,7 +208,7 @@ class openpower {
     # Timing
     # Track time between sending messages out over network
     protected variable data_last_ipmideqlatency [clock clicks -millisecond]
-    
+
 
     #AME
     #List of AME Components on host
@@ -230,7 +230,7 @@ body openpower::find_occ_instance {} {
     set _occlist {}
     #OCC numbering starts at 1 for the routing byte in the OCC passthru command
     set _occ 1
-    
+
     #Query for number of OCC instance (number of OCC on a node)
     #Try OCC instances sequentially as long as previous ones pass.
     while {1} {
@@ -248,7 +248,7 @@ body openpower::find_occ_instance {} {
 	    set _datalen [binary scan [lindex $result 1] "H*" _allbytes]
 	    ::amesterdebug::debug openpower "query occ: error = $_err"
 	    ::amesterdebug::debug openpower "query occ: data = $_allbytes"
-	    
+
 	    if {$_err == 0} {
 		lappend _occlist $_occhex
 	    } else {
@@ -257,10 +257,10 @@ body openpower::find_occ_instance {} {
 	}
 	incr _occ
     }
-    
+
     ::amesterdebug::debug openpower "OCC instances (hex routing value) = $_occlist"
-    
-    return $_occlist   
+
+    return $_occlist
 }
 
 # Determine the number of OCC instances by counting the POWER processors
@@ -277,6 +277,7 @@ body openpower::find_occ_instance {} {
 body openpower::find_occ_instance2 {} {
     set _occ_count 0
     set _proc_count 0
+    set _module_count 0
     set _occlist {}
     #Put spaces between each byte in data parameter
     set errorcode ""
@@ -294,14 +295,23 @@ body openpower::find_occ_instance2 {} {
 	::amesterdebug::debug openpower "ipmi line = $line"
 	set words [split $line]
 	foreach word $line {
-            set _occnum {}
+        set _occnum {}
+        #SHELDON9999 : Future release remove CPU for PROCESSOR MODULE only.
 	    if {[scan $word "CPU %d" _procnum]} {
                 incr _proc_count
             } elseif {[scan $word "CPU%d" _procnum]} {
                 incr _proc_count
+            } elseif {[string compare $word "MODULE"] == 0} {
+                incr _module_count
             }
+        }
 	}
+
+    if { $_module_count < $_proc_count} {
+        set _proc_count $_module_count
+        ::amesterdebug::debug openpower "CPU # different than PROC MODULE use MODULE count =$ _proc_count"
     }
+
     if {[catch {close $f1} closeresult]} {
 	set n 0
 	foreach w [split $closeresult] {
@@ -326,39 +336,24 @@ body openpower::detect_ami_level {} {
     #that does not use the OCC number in the IPMI message. It can only talk to the first
     #OCC in the system.
     set _occhex 01
-
-    #Try legacy mode
-    set legacy_mode 1
     #Use OCC version command "01"
     if {[catch {set result [raw_ipmi_send_sync 20 00 $_occhex 3a 0d [binary format "H2" 01]] } catch_result]} {
 	#Failed for some reason
-	::amesterdebug::debug openpower "Detection of legacy mode = $legacy_mode failed: $catch_result"
+	::amesterdebug::debug openpower "Info detection of legacy mode = $legacy_mode failed: $catch_result"
     } else {
 	set _status [lindex $result 0]
+    set legacy_mode 1
 	if {$_status == 0} {
 	    #We have older AMI firmware that is multi-OCC aware
 	    ::amesterdebug::debug openpower "AMI firmware supporting 1 OCC only detected"
 	    return
 	}
     }
-    
-    #Try newer AMI firmware
-    set legacy_mode 0
-    #Use OCC version command 0x01 routing to OCC 1 (first 01 below is the OCC routing byte)
-    if {[catch {set result [raw_ipmi_send_sync 20 00 $_occhex 3a 0d [binary format "H2H2" 01 01]] } catch_result]} {
-	#Failed for some reason
-	::amesterdebug::debug openpower "Detection of legacy mode = $legacy_mode failed: $catch_result"
-    } else {
-	set _status [lindex $result 0]
-	if {$_status == 0} {
-	    #We have newer AMI firmware that is multi-OCC aware
-	    ::amesterdebug::debug openpower "AMI firmware supporting multi-OCC detected"
-	    return
-	}
-    }
 
-    ::amesterdebug::debug 1 "ERROR: Cannot detect Amester firmware with old or new AMI firmware -- Is system powered on?"
-    return -code error "ERROR: Cannot detect Amester firmware with old or new AMI firmware -- Is system powered on?"
+    #Default newer AMI firmware legacy_mode already set to 0.
+    set legacy_mode 0
+    ::amesterdebug::debug openpower "Default AMI firmware supporting multi-OCC"
+
 }
 
 body openpower::init {} {
@@ -367,7 +362,7 @@ body openpower::init {} {
     ipmi_health
 
     detect_ami_level
- 
+
     #The _possible_nodes list is hexidecimal rsaddr values in string format for all nodes
     #Presently, OpenPOWER supports a single node.
     set _possible_nodes [list 20]
@@ -388,12 +383,12 @@ body openpower::init {} {
 	    if {$::options(gui)} {
 		add_node_gui_menu $name [expr $nodeValue - 20]
 	    }
-	    set ameclist [concat $ameclist [ame::init_ameocc_objects $name $nodeValue $occlist]]                     
+	    set ameclist [concat $ameclist [ame::init_ameocc_objects $name $nodeValue $occlist]]
 	    ::amesterdebug::debug openpower "Found node $nodeValue with OCC: $occlist"
 	}
     }
     ::amesterdebug::debug openpower "List of available nodes: $fwlist"
-    
+
 }
 
 
@@ -522,7 +517,7 @@ body openpower::ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority
     # note: messages of the same priority remain in the same order.
     #   Therefore, inserting into the front or end of the msgq will add the
     #   message at the beginning or end of messages with the same priority.
-    # 
+    #
     set ipmi_msgq [lsort -integer -index 0 $ipmi_msgq]
 
     if {[::amesterdebug::set openpower]} {
@@ -533,7 +528,7 @@ body openpower::ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority
 
     if {[llength $ipmi_msgq] == 1} {
 	ipmi_dequeue
-    }    
+    }
 }
 
 # based on bc::net_write_msg
@@ -569,7 +564,7 @@ body openpower::ipmi_dequeue {} {
     set netfn [lindex $item 7]
     set cmd [lindex $item 8]
     set data [lindex $item 9]
-    
+
     if {[info exists inprogress($tag,tag)]} {
 	::amesterdebug::debug openpower "Message for $tag pending with same tag. ${netfn}${cmd}${data}"
 	return
@@ -672,7 +667,7 @@ body openpower::ipmi_process {tag result} {
 	# Error: received reply without a message
 	::amesterdebug::debug 1 "$this ipmi_process received $tag, but no message was sent."
 	return
-    } 
+    }
 
     if {$result eq ""} {
 	# Error in processing IPMI command. Got
@@ -729,7 +724,7 @@ body openpower::ipmi_process {tag result} {
 	binary scan $databytes "H*" all
 	::amesterdebug::debug 1 "  callback input was status=$status data=$all"
     }
-    
+
     #Record time to process the message
     set now [clock clicks -milliseconds]
     ${name}_ipmiprocesslatency add_data [expr $now - $stop_time_ms]
@@ -777,14 +772,14 @@ body openpower::ipmi_thread_start_openipmi {} {
     set pid [pid]
     #ipmicmd is a placeholder to be set later from the main thread (below)
     set ipmicmd "ipmitool"
-    
+
     proc ipmi {debug tag rssa chan lun netfn cmd {data ""}} {
 	global gthread
 	global obj
 	set result [doipmi $debug $rssa $chan $lun $netfn $cmd $data]
 	thread::send -async $gthread [list $obj ipmi_process $tag $result]
     }
-    
+
     proc doipmi {debug rssa chan lun netfn cmd {data ""}} {
 	global ipmicmd
 
@@ -796,11 +791,11 @@ body openpower::ipmi_thread_start_openipmi {} {
 	    set n [binary scan $databin "@${i}H2" byte]
 	    lappend data2 "0x$byte"
 	}
-	
+
 	set errorcode ""
 	set result ""
 	set cmdout "0x$netfn 0x$cmd $data2"
-	if {$debug} {	
+	if {$debug} {
 	    thread::send -async $::gthread [list ::amesterdebug::debug ipmi "trying |$ipmicmd raw $cmdout"]
 	}
 	if {[catch {
@@ -838,33 +833,33 @@ body openpower::ipmi_thread_start_openipmi {} {
 	if {$errorcode ne ""} {
 	    set result [format "%x" $errorcode]
 	}
- 
+
 	set oldresult $result
 	set result ""
 	foreach byte [split $oldresult] {
 	    set result [concat $result "0x$byte"]
 	}
-	
+
 	if {$debug} {
 	    thread::send -async $::gthread [list ::amesterdebug::debug ipmi "ipmi out: $cmdout\n      in: $result"]
 	}
-	
+
 	return $result
     }
-    
+
     thread::wait
 }
-		]  
+		]
     #end set ithread
 
     #Setup ithread
     set ipmicmd "$ipmi_ipmitool -H $addr -U $ipmi_user -P $ipmi_passwd"
-    
+
     thread::send $ithread [list set obj $this]
     if {$ipmicmd ne ""} {
 	thread::send $ithread [list set ipmicmd $ipmicmd]
     }
-    
+
     #test ipmicmd
     thread::send $ithread [list doipmi 0 20 00 00 06 01] result
     if {[string range $result 0 3] eq "FAIL"} {
@@ -875,7 +870,7 @@ body openpower::ipmi_thread_start_openipmi {} {
     } else {
 	#IPMI works
     }
-    
+
 }
 
 body openpower::get {what args} {
@@ -890,7 +885,7 @@ body openpower::get {what args} {
 	net_status {return $net_status}
 	default {return -code error "unknown command for amec: $what $args"}
     }
-    
+
 }
 
 body openpower::add_node_gui_menu {host node} {
@@ -898,4 +893,4 @@ body openpower::add_node_gui_menu {host node} {
     regsub -all "::" $host "" name
     .host.c.f.${name}_menu.functions.m add cascade -label "${name}_node${node}" -menu .host.c.f.${name}_menu.functions.m._node${node}
     menu .host.c.f.${name}_menu.functions.m._node${node}
-}    
+}

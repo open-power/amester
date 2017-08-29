@@ -2,7 +2,7 @@
 # (C) Copyright IBM Corporation 2011, 2016
 #
 
-package provide app-amester 7.0
+package provide app-amester 7.1
 
 
 #--------------------------------------------------------------------
@@ -155,9 +155,9 @@ proc parse_command_line {} {
 
     # Note: when run.tcl is used, it encloses arguments in {} braces.
 
-    # Turn on ::amesterdebug::debug for options if --debug_options appears 
+    # Turn on ::amesterdebug::debug for options if --debug_options appears
     # anywhere on commandline.
-    # We do this since it is too early for a user script 
+    # We do this since it is too early for a user script
     # to turn on debugging
     if [string match "*--debug_options*" $::argv] {
 	::amesterdebug::set options 1
@@ -181,7 +181,7 @@ proc parse_command_line {} {
     set args_extra ""
     ::amesterdebug::debug options "myargs = $myargs"
     ::amesterdebug::debug options "myargs len = [llength $myargs]"
-    
+
     for {set i 0} {$i < [llength $myargs] } {incr i} {
 	set arg [lindex $myargs $i]
 	::amesterdebug::debug options "processing arg $i: $arg"
@@ -203,9 +203,9 @@ proc parse_command_line {} {
 	    break
 	}
     }
-    
+
     ::amesterdebug::debug options "extra args = $args_extra"
-    
+
     if {[llength $args_extra] >= 1} {
 	set ::options(startscript) [lindex $args_extra 0]
 	set ::script_argv [lrange $args_extra 1 end]
@@ -271,7 +271,7 @@ proc host_window_delete {host} {
     ::amesterdebug::debug gui "host_window_delete $host"
     #remove from display
     foreach item [array names ::host_window_elements $host,*] {
-	destroy $::host_window_elements($item)	
+	destroy $::host_window_elements($item)
     }
     #forget element
     array unset ::host_window_elements "$host,*"
@@ -338,7 +338,7 @@ proc host_window_update_do {varname key op} {
     # grid scrollbar
 
     incr row
-    
+
     # Add all sockets (hosts) being watched
     ::amesterdebug::debug gui "  host_list is $::host_list"
     foreach {name} $::host_list {
@@ -404,8 +404,8 @@ proc optionsWindow {} {
 	raise .options
 	wm deiconify .options
 	return
-    } 
-    
+    }
+
     toplevel .options
     wm title .options "Options"
     wm resizable .options 0 0
@@ -442,7 +442,7 @@ proc bgerror {msg} {
 #. = main window
 #
 
-# 
+#
 # Globals
 #
 
@@ -480,7 +480,7 @@ proc readme {} {
     } else {
 	# Get manual from virtual file system
 	set _readme_filename [file join $::amesterinit::topdir doc/README.txt]
-	set _readme_file [open $_readme_filename r] 
+	set _readme_file [open $_readme_filename r]
 	set _readme_message [read $_readme_file]
 
 	toplevel .readme
@@ -503,7 +503,7 @@ proc help {} {
     } else {
 	# Get manual from virtual file system
 	set help_filename [file join $::amesterinit::topdir doc/manual.txt]
-	set help_file [open $help_filename r] 
+	set help_file [open $help_filename r]
 	set help_message [read $help_file]
 
 	toplevel .help
@@ -528,7 +528,7 @@ proc ameinterface_2_15 {} {
     } else {
 	# Get manual from virtual file system
 	set filename [file join $::amesterinit::topdir doc/ame_2_15.txt]
-	set file [open $filename r] 
+	set file [open $filename r]
 	set message [read $file]
 
 	toplevel $w
@@ -554,14 +554,13 @@ proc about {} {
 	wm resizable .about 0 0
 	label .about.label -text "
 $::amesterinit::toolname
-
+Sheldon Bailey <baileysh@us.ibm.com>
 
 Version $amesterinit::amester_ver_string
 
-
-(C) Copyright IBM Corporation 2011, 2016
+(C) Copyright IBM Corporation 2011, 2017
 "  -justify left
-	pack .about.label 
+	pack .about.label
     }
 }
 
@@ -580,12 +579,11 @@ proc update_check {} {
 
     .update.label configure -text "
 $::amesterinit::toolname
-Charles Lefurgy <lefurgy@us.ibm.com>
 
 Checking for new version.....
 "  -justify left
-    
-    
+
+
     if {[catch {http::geturl $updateurl -command update_callback} result]} {
 	#Something went wrong
 	update_callback "fail"
@@ -619,15 +617,13 @@ proc update_callback {token} {
 
     .update.label configure -text "
 $::amesterinit::toolname
-Charles Lefurgy <lefurgy@us.ibm.com>
-
 
 Your version: $amesterinit::amester_ver_string
 Current version: $currentversion
 
 "  -justify left
-	
-    
+
+
 }
 
 
@@ -758,7 +754,7 @@ proc cleanup {{return_code 0}} {
 	# show remaining objects
 	set objs [find objects]
 	if {$objs ne {}} {puts "remaining objs: $objs"}
-	
+
 	if {$::options(gui)} {
 	    set widgets [winfo children .]
 	    while {$widgets ne {}} {
@@ -866,11 +862,11 @@ proc make_tmpdir {} {
 	    exit 1
 	}
     }
-    
+
     tsv::set shared tmpdir $::tmpdir
-    
-    
-    
+
+
+
     if {[set code [catch {file delete -force $::tmpdir}]]} {
 	puts "Error: can't delete $tmpdir with code=$code"
 	puts "errorInfo: $errorInfo"
@@ -901,7 +897,7 @@ if {$options(gui)} {
     # Menu bar
     #
     frame .mbar -relief raised -bd 2
-    
+
     # file menu
     menubutton .mbar.file -text File -underline 0 -menu .mbar.file.menu
     menu .mbar.file.menu
@@ -911,7 +907,7 @@ if {$options(gui)} {
     .mbar.file.menu add command -label "Quit" -command exit_application
 
     menu .mbar.file.menu.connect
-    
+
     # tools menu
     menubutton .mbar.tools -text Tools -underline 0 -menu .mbar.tools.menu
     menu .mbar.tools.menu
@@ -926,7 +922,7 @@ if {$options(gui)} {
     .mbar.help.menu add command -label "User Manual" -command "help"
     #.mbar.help.menu add command -label "Check for new version" -command "update_check"
     .mbar.help.menu add command -label "About" -command "about"
-    
+
     pack .mbar.file .mbar.tools .mbar.help -side left
 
     #
@@ -937,11 +933,11 @@ if {$options(gui)} {
     button .bbar.selcols -text "Select columns" -command [list multiselect \#auto host_window_stats_all host_window_stats]
     button .bbar.pause -text "Pause" -command pause_toggle
     pack .bbar.selcols .bbar.pause -side left
-    
+
     #
     # Host pane
     #
-    
+
     frame .host
     canvas .host.c -yscrollcommand [list .host.yscroll set] -xscrollcommand [list .host.xscroll set]
     frame .host.c.f
@@ -1007,4 +1003,3 @@ if {!$::options(gui)} {
     ::amesterdebug::debug threads "$::amesterinit::toolname is waiting"
     thread::wait
 }
-

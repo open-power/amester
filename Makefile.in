@@ -4,7 +4,7 @@
 
 #Note: version numbers should be kept consistent with pkgIndex.tcl, amester.tcl, README.txt
 MAJOR_VERSION := 7
-MINOR_VERSION := 0
+MINOR_VERSION := 1
 RELEASE_DIR := build/v$(MAJOR_VERSION)_$(MINOR_VERSION)
 
 KBSKIT_LINUX := kbsmk8.6-bi
@@ -30,7 +30,7 @@ else
 $(error Cannot make Amester for Cygwin)
 endif
 
-default: 
+default:
 	$(MAKE) build
 
 hostinfo:
@@ -72,7 +72,7 @@ build_source:
 	tar -cjf $(RELEASE_DIR)/examples.tar.bz2 amester_v$(MAJOR_VERSION)_$(MINOR_VERSION)/examples
 	cp -r amester_v$(MAJOR_VERSION)_$(MINOR_VERSION)/examples $(RELEASE_DIR)
 
-# 
+#
 # Build executables from the current directory source code
 #
 .PHONY: build
@@ -99,7 +99,7 @@ build_linux:
 	-mkdir -p build
 	cp -f package/$(KBSKIT_LINUX) build/kbskit.bin
 	echo Wrapping starpack....
-	cd build; ../$(TCLKIT_RUN) ../package/sdx.kit  wrap amester.kit -runtime kbskit.bin 
+	cd build; ../$(TCLKIT_RUN) ../package/sdx.kit  wrap amester.kit -runtime kbskit.bin
 	mv build/amester.kit amester
 	chmod 777 amester
 	-mkdir -p $(RELEASE_DIR)/linux
@@ -108,11 +108,11 @@ build_linux:
 #---------------------------------------
 # Build agent
 
-# 
+#
 # Build executables from the current directory source code
 #
 .PHONY: agent_build
-agent_build: $(TCLKIT_RUN) package/sdx.kit package/$(KBSKIT_LINUX) 
+agent_build: $(TCLKIT_RUN) package/sdx.kit package/$(KBSKIT_LINUX)
 	-mkdir -p build
 	rm -rf $(RELEASE_DIR)
 	$(MAKE) agent_build_getcode
@@ -132,9 +132,8 @@ agent_build_linux:
 	-mkdir -p build
 	cp -f package/$(KBSKIT_LINUX) build/kbskit.bin
 	echo Wrapping starpack....
-	cd build; ../$(TCLKIT_RUN) ../package/sdx.kit  wrap agent.kit -runtime kbskit.bin 
+	cd build; ../$(TCLKIT_RUN) ../package/sdx.kit  wrap agent.kit -runtime kbskit.bin
 	mv build/agent.kit emtagent
 	chmod 777 emtagent
 	-mkdir -p $(RELEASE_DIR)/linux
 	mv emtagent $(RELEASE_DIR)/linux
-

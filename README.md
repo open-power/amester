@@ -80,4 +80,4 @@ In the AMESTER GUI
   metrics collection solution.
 
 ## Maintainer
-Charles Lefurgy (lefurgy@us.ibm.com)
+Sheldon Bailey (baileysh@us.ibm.com)

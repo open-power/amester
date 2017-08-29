@@ -1,6 +1,6 @@
 #
 # (C) Copyright IBM Corporation 2011, 2016
-# 
+#
 
 package ifneeded app-amester 7.0 [list amesterinit::start $dir]
 
@@ -9,10 +9,10 @@ namespace eval amesterinit {
     variable msgn 0
 
     variable amester_ver_major 7
-    variable amester_ver_minor 0
-    variable amester_ver_year "2016"
-    variable amester_ver_month "4"
-    variable amester_ver_day "1"
+    variable amester_ver_minor 1
+    variable amester_ver_year "2017"
+    variable amester_ver_month "8"
+    variable amester_ver_day "29"
     variable amester_ver_string "${amester_ver_major}.${amester_ver_minor} ${amester_ver_year}-${amester_ver_month}-${amester_ver_day}"
 
     variable topdir
@@ -26,7 +26,7 @@ proc amesterinit::msg {w msg} {
     if {$::options(gui)} {
 	set uid [::amecinit::create_uid]
 	toplevel ${w}_${uid}
-	message ${w}_${uid}.m -text $msg -relief groove -aspect 300 -width 500 -borderwidth 20 
+	message ${w}_${uid}.m -text $msg -relief groove -aspect 300 -width 500 -borderwidth 20
 	pack ${w}_${uid}.m -side top
 	focus ${w}_${uid}
 	raise ${w}_${uid}
@@ -48,11 +48,12 @@ proc amesterinit::center {w} {
 
 proc amesterinit::splash {} {
     set msg "
-$::amesterinit::toolname ${amesterinit::amester_ver_major}.${amesterinit::amester_ver_minor}
-${amesterinit::amester_ver_year}-${amesterinit::amester_ver_month}-${amesterinit::amester_ver_day}
+$::amesterinit::toolname
+Version $amesterinit::amester_ver_string
 
+Sheldon Bailey <baileysh@us.ibm.com>
 
-(C) Copyright IBM Corporation 2011, 2016
+(C) Copyright IBM Corporation 2011, 2017
 "
     if {$::options(gui)} {
 	set w .splash
@@ -90,7 +91,7 @@ proc amesterinit::start {dir} {
 	    set ::options(gui) 0
 	}
     }
-    
+
     #Load Tk only if we show the GUI
     if {$::options(gui)} {
 	if {[catch {package require Tk} errMsg errOpt]} {
@@ -111,11 +112,10 @@ proc amesterinit::start {dir} {
     }
 
     amesterinit::init
-    
+
     if {! $amesterinit::error} {
 	set file [file join $dir amester.tcl]
 	set amester "{ $file }"
 	namespace eval :: source \"$file\"
     }
 }
-
