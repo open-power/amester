@@ -2,7 +2,7 @@
 # (C) Copyright IBM Corporation 2011, 2016
 #
 
-package provide app-amester 7.1
+package provide app-amester 7.0
 
 
 #--------------------------------------------------------------------
