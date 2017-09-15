@@ -31,13 +31,19 @@ set ::my_parm_list {
 }
 
 if {[llength $::script_argv] < 4} {
-    puts "usage:  amester --nogui watchsensors.tcl <bmc ip addr> <bmc user> <bmc pw> <output filename | stdout>"
+    puts "usage:  amester --nogui watchsensors.tcl <bmc ip addr> <bmc user> <bmc pw> <output filename | stdout> <ipmi flags>"
     exit 0;
 } else {
     set ::bmcaddr [lindex $::script_argv 0]
     set ::bmcusr [lindex $::script_argv 1]
     set ::bmcpw [lindex $::script_argv 2]
     set ::tracefile [lindex $::script_argv 3]
+    if {[llength $::script_argv] > 3} {
+      set ::bmcflags [lindex $::script_argv 4]
+      for {set i 5} {$i < [llength $::script_argv]} {incr i} {
+        append bmcflags " " [lindex $::script_argv $i]
+      }
+    }
 }
 
 
@@ -45,7 +51,7 @@ set ::firstread "true"
 
 # Connect to the POWER server
 puts "Connecting to $::bmcaddr ..."
-openpower mysys -addr $::bmcaddr -ipmi_user $::bmcusr -ipmi_passwd $::bmcpw
+openpower mysys -addr $::bmcaddr -ipmi_user $::bmcusr -ipmi_passwd $::bmcpw -ipmi_flags $::bmcflags
 #localhost mysys
 
 # Either set the AMEC to trace manually, or trace all.
@@ -94,12 +100,12 @@ set ::allsensors {}
 set ::allparms {}
 foreach amec $::theameclist {
     if {$::my_sensor_list eq "all"} {
-	set allsensorobjs [$amec get sensors]
-	set allsensornames {}
-	foreach s $allsensorobjs {
-	    lappend allsensornames [$s cget -sensorname]
-	}
-	set ::my_sensor_list [lsort -ascii $allsensornames]
+  set allsensorobjs [$amec get sensors]
+  set allsensornames {}
+  foreach s $allsensorobjs {
+      lappend allsensornames [$s cget -sensorname]
+  }
+  set ::my_sensor_list [lsort -ascii $allsensornames]
     }
     $amec set_sensor_list $::my_sensor_list
     # Make allsensors, a list of all sensor objects
@@ -197,27 +203,28 @@ proc my_data_callback {sensorobj} {
     if {$sensorobj != [lindex $::allsensors end]} {return}
     # emit readings
     if {$::firstread eq "false"} { 
-	puts -nonewline $::tracefp "[timestamp],"
-	foreach s $::allsensors {
-	    puts -nonewline  $::tracefp "[$s cget -value],"
-	}
+  puts -nonewline $::tracefp "[timestamp],"
+  foreach s $::allsensors {
+      puts -nonewline  $::tracefp "[$s cget -value],"
+  }
         #Print the accumulator values for each sensor and the number
         #of internal updates. Use for precise averages over any time
         #period.
-	foreach s $::allsensors {
-	    puts -nonewline  $::tracefp "[$s cget -value_acc],"
-	    puts -nonewline  $::tracefp "[$s cget -updates],"
-	}
+  foreach s $::allsensors {
+      puts -nonewline  $::tracefp "[$s cget -value_acc],"
+      puts -nonewline  $::tracefp "[$s cget -updates],"
+  }
 
         #Call procedure pointer to read and print parameters
         #for this AME API version
         $::read_and_print_parameters_proc
 
-	puts $::tracefp ""
-	flush $::tracefp
+  puts $::tracefp ""
+  flush $::tracefp
     }  else { 
-	set ::firstread "false" 
+  set ::firstread "false" 
     } 
     # Pause before printing next line
     after $::interval
 }
+

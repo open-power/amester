@@ -8,18 +8,26 @@
 # Important globals. Change for your environment.
 #
 
-# Put the BMC IP address on the next line
-set ::bmc_address 127.0.0.1
-# IPMI account name for BMC
-set ::ipmi_user ADMIN
-# IPMI password
-set ::ipmi_passwd admin
+#Put the BMC IP address on the next line
+#set ::bmc_address 
+#IPMI account name for BMC
+#set ::ipmi_user 
+#IPMI password
+#set ::ipmi_passwd 
+
+#set ::ipmi_flags "-I lanplus -L OPERATOR"
 
 # Allow above to be placed on command line
-if {[llength $::script_argv] == 3} {
+if {[llength $::script_argv] >= 3} {
     set ::bmc_address [lindex $::script_argv 0]
     set ::ipmi_user [lindex $::script_argv 1]
     set ::ipmi_passwd [lindex $::script_argv 2]
+    if {[llength $::script_argv] > 2} {
+      set ::ipmi_flags [lindex $::script_argv 3]
+      for {set i 4} {$i < [llength $::script_argv]} {incr i} {
+        append ipmi_flags " " [lindex $::script_argv $i]
+      }
+    }
 } elseif {[llength $::script_argv] > 0} {
     puts "usage:  amester openpower.tcl <bmc_ip_addr> <userid> <password>"
     exit 0
@@ -74,7 +82,7 @@ set ::gui_parm_list {
 # ::amesterdebug::output $::thedebugfile
 
 # Connect to OpenPOWER system
-openpower myopenpower -addr $::bmc_address -ipmi_user $::ipmi_user -ipmi_passwd $::ipmi_passwd
+openpower myopenpower -addr $::bmc_address -ipmi_user $::ipmi_user -ipmi_passwd $::ipmi_passwd -ipmi_flags $ipmi_flags
 
 # Setup GUI
 foreach ame [find objects -isa ame] {
