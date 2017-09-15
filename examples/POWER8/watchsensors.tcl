@@ -203,26 +203,26 @@ proc my_data_callback {sensorobj} {
     if {$sensorobj != [lindex $::allsensors end]} {return}
     # emit readings
     if {$::firstread eq "false"} { 
-  puts -nonewline $::tracefp "[timestamp],"
-  foreach s $::allsensors {
-      puts -nonewline  $::tracefp "[$s cget -value],"
-  }
+      puts -nonewline $::tracefp "[timestamp],"
+      foreach s $::allsensors {
+          puts -nonewline  $::tracefp "[$s cget -value],"
+      }
         #Print the accumulator values for each sensor and the number
         #of internal updates. Use for precise averages over any time
         #period.
-  foreach s $::allsensors {
-      puts -nonewline  $::tracefp "[$s cget -value_acc],"
-      puts -nonewline  $::tracefp "[$s cget -updates],"
-  }
+      foreach s $::allsensors {
+          puts -nonewline  $::tracefp "[$s cget -value_acc],"
+          puts -nonewline  $::tracefp "[$s cget -updates],"
+      }
 
         #Call procedure pointer to read and print parameters
         #for this AME API version
         $::read_and_print_parameters_proc
 
-  puts $::tracefp ""
-  flush $::tracefp
+      puts $::tracefp ""
+      flush $::tracefp
     }  else { 
-  set ::firstread "false" 
+      set ::firstread "false" 
     } 
     # Pause before printing next line
     after $::interval
