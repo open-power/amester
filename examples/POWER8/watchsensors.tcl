@@ -18,11 +18,11 @@ set ::interval 0
 #Use "all" if you want to trace all sensors
 #set ::my_sensor_list "all"
 set ::my_sensor_list {
-    FREQA2MSP0
-    IPS2MSP0
-    PWR250US
-    TEMP2MSP0
-    VOLT250USP0V0
+  PWR250US
+  PWR250USP0
+  PWR250USVCS0
+  PWR250USVDD0
+  PWR250USMEM0
 }
 
 # Parameters to trace
@@ -51,6 +51,7 @@ set ::firstread "true"
 
 # Connect to the POWER server
 puts "Connecting to $::bmcaddr ..."
+puts "$::bmcflags"
 openpower mysys -addr $::bmcaddr -ipmi_user $::bmcusr -ipmi_passwd $::bmcpw -ipmi_flags $::bmcflags
 #localhost mysys
 
@@ -114,23 +115,28 @@ foreach amec $::theameclist {
 }
 
 # Print header
-puts -nonewline $::tracefp "AMESTER Date,AMESTER Time,"
+puts -nonewline $::tracefp "Time(ms),"
 foreach s $::allsensors {
     set shortName [regsub "^::" $s ""]
     puts -nonewline $::tracefp "$shortName,"
+    puts "$shortName"
 }
-foreach s $::allsensors {
-    set shortName [regsub "^::" $s ""]
-    puts -nonewline $::tracefp "$shortName acc,"
-    puts -nonewline $::tracefp "$shortName updates,"
-}
-foreach s $::allparms {
-    puts -nonewline $::tracefp "[$s cget -objname],"
-}
+#foreach s $::allsensors {
+    #set shortName [regsub "^::" $s ""]
+    ##puts -nonewline $::tracefp "$shortName acc,"
+    ##puts -nonewline $::tracefp "$shortName updates,"
+#}
+#foreach s $::allparms {
+    #puts -nonewline $::tracefp "[$s cget -objname],"
+#}
 puts $::tracefp ""
 flush $::tracefp
+#OLD
+#set ::starttime [clock clicks -milliseconds]
+#proc timestamp {} { return [clock format [clock seconds] -format "%D,%T"]}
 set ::starttime [clock clicks -milliseconds]
-proc timestamp {} { return [clock format [clock seconds] -format "%D,%T"]}
+proc timestamp {} { return [expr [clock clicks -milliseconds] - $::starttime]}
+
 # Set the callback for all sensor data updates
 set ::new_data_callback my_data_callback
 
@@ -210,14 +216,14 @@ proc my_data_callback {sensorobj} {
         #Print the accumulator values for each sensor and the number
         #of internal updates. Use for precise averages over any time
         #period.
-      foreach s $::allsensors {
-          puts -nonewline  $::tracefp "[$s cget -value_acc],"
-          puts -nonewline  $::tracefp "[$s cget -updates],"
-      }
+      #foreach s $::allsensors {
+          #puts -nonewline  $::tracefp "[$s cget -value_acc],"
+          #puts -nonewline  $::tracefp "[$s cget -updates],"
+      #}
 
         #Call procedure pointer to read and print parameters
         #for this AME API version
-        $::read_and_print_parameters_proc
+        #$::read_and_print_parameters_proc
 
       puts $::tracefp ""
       flush $::tracefp

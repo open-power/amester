@@ -283,7 +283,6 @@ body openpower::find_occ_instance2 {} {
     set errorcode ""
     set result ""
 
-    set ipmicmd "$ipmi_ipmitool -H $addr -U $ipmi_user -P $ipmi_passwd $ipmi_flags"
     ::amesterdebug::debug openpower "trying |$ipmicmd fru list"
     if {[catch {
 	set f1 [open "|$ipmicmd fru list" r]
@@ -308,11 +307,11 @@ body openpower::find_occ_instance2 {} {
         }
 	}
 
+    #if { $_module_count < $_proc_count} {
     if { $_module_count < $_proc_count} {
         set _proc_count $_module_count
         ::amesterdebug::debug openpower "CPU # different than PROC MODULE use MODULE count =$ _proc_count"
     }
-
     if {[catch {close $f1} closeresult]} {
 	set n 0
 	foreach w [split $closeresult] {
