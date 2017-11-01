@@ -30,6 +30,7 @@ write custom data collection programs and control the GUI to build
 special-purpose demonstrations. AMESTER supports a headless mode for unattended
 data collection.
 
+AMESTER was originally authored by Charles Lefurgy (IBM Research).
 
 ## Quick Start
 
