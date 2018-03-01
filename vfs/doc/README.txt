@@ -3,10 +3,15 @@
 Automated Measurement of Systems for Temperature and Energy Reporting
 README
 
+Version 7.2
+Release 2017-08-29
+
+Update to add support P9 openBMC systems using HTTP:REST.
+
 Version 7.1
 Release 2017-08-29
 
-Update to work with P9 Boston system.
+Update to work with P9 BMC/FSP systems using IPMI.
 
 
 Version 7.0

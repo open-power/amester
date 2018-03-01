@@ -977,7 +977,7 @@ lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester sen
 lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester ame.itcl ame_*.itcl]]
 lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester bc.itcl]]
 lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester scope.itcl scope_*.itcl ]]
-lappend files [glob -directory $::amesterinit::topdir/lib/app-amester host.itcl blade.itcl local.itcl rmcp.itcl netc.itcl emtagent.itcl systemz.itcl tunasim.itcl openpower.itcl]
+lappend files [glob -directory $::amesterinit::topdir/lib/app-amester host.itcl blade.itcl local.itcl rmcp.itcl netc.itcl emtagent.itcl systemz.itcl tunasim.itcl openpower.itcl openbmc.itcl]
 lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester parm_*.itcl]]
 lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester tracebuffer.itcl tracebuffer_*.itcl ]]
 

@@ -4,13 +4,13 @@
 
 class ame {
     public proc init_ame_objects {hostobj {rssa_list {20}}}
-    public proc init_ameocc_objects {hostobj {rssa {20}} {occ_list {0}}}  
+    public proc init_ameocc_objects {hostobj {rssa {20}} {occ_list {0}}}
 
     #The blade or rack-mount server on which AME resides
     public variable host ""
 
-    #DEV NOTE: Going forward, the rssa and lun should be abstracted to a template and 
-    #magic bytes that the specific host type needs to forward the AME message. 
+    #DEV NOTE: Going forward, the rssa and lun should be abstracted to a template and
+    #magic bytes that the specific host type needs to forward the AME message.
     #This allows IPMI or IBM POWER to co-exist with a common ame component since the
     #AME messages are common, but the routing is different.
 
@@ -21,13 +21,13 @@ class ame {
     #Note values are hexadecimal, not decimal
     #By default we assume 1 AME component on the BMC.
     public variable rssa 20
-    
+
     #LUN (Logical Unit) for IPMI commands.
     #For P8, LUN is overloaded in Amester to correspond to the OCC
     #number for passing through Amester data packet.
     #A combination of rssa and the OCC number map to one AME component.
-    #Used only in ame_2_26 onward. 
-    public variable lun 00        
+    #Used only in ame_2_26 onward.
+    public variable lun 00
 
     # Communication interface
     # This is a pass-thru to host-level versions of the same methods.
@@ -60,7 +60,7 @@ proc ame::init_ame_objects {host {rssa_list {20}}} {
 
     # Update this when supported API level changes (for systems up to P7+)
     set max_ame_api_major 2
-    set max_ame_api_minor 25
+    set max_ame_api_minor 28
 
     set ameclist ""
     set ameapimajor 0
@@ -83,15 +83,15 @@ proc ame::init_ame_objects {host {rssa_list {20}}} {
     }
 
     set i 0
-    ::amesterdebug::debug ame "ame::initame_objects rssa_list=$rssa_list"
+    ::amesterdebug::debug ame "ame::init_ame_objects rssa_list=$rssa_list"
 
     # Loop through the list of Nodes ($rssa_list)
     foreach addr $rssa_list {
-	::amesterdebug::debug ame "ame::initame_objects trying addr=$addr"
+	::amesterdebug::debug ame "ame::init_ame_objects trying addr=$addr"
 	set amefw {}
 	set ameapimajor 0
 	set ameapiminor 0
-	
+
 	# Get AME API version from host at specific address
 	if {[catch {set result [$host ipmi_send_sync $addr 00 00 3a 3c [binary format "c" 10]]} errmsg]} {
 	    # API command didn't work
@@ -107,7 +107,7 @@ proc ame::init_ame_objects {host {rssa_list {20}}} {
 		binary scan $databytes "cc" ameapimajor ameapiminor
 	    }
 	}
-	
+
 	if {$ameapimajor == 0} {
 	    puts "Could not detect AME firmware on host=$host addr=$addr"
 	    return
@@ -121,7 +121,7 @@ proc ame::init_ame_objects {host {rssa_list {20}}} {
 	    # missing API levels.
 
 	    switch "${ameapimajor}.${ameapiminor}" {
-		
+
 		2.9 {
 		    puts "This version of $::amesterinit::toolname does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Will try to use previous version 2.8 for $host"
 		    ::amesterdebug::debug 1 "This version of $::amesterinit::toolname does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Will try to use previous version 2.8 for $host"
@@ -156,9 +156,9 @@ proc ame::init_ame_objects {host {rssa_list {20}}} {
 			set amefw [ame_${ameapimajor}_${ameapiminor} ::${host}_ame${i} $host -rssa $addr]
 		    }
 		}
-		
+
 	    }
-	} result]} { 
+	} result]} {
 	    bgerror "can't connect to AME firmware with API ${ameapimajor}.${ameapiminor} for $host"
 	} else {
 	    lappend ameclist $amefw
@@ -171,7 +171,7 @@ proc ame::init_ame_objects {host {rssa_list {20}}} {
 	    }
 
 	}
-	
+
 	incr i
     }
     return $ameclist
@@ -179,17 +179,17 @@ proc ame::init_ame_objects {host {rssa_list {20}}} {
 
 
 #
-# Find and initialize all AME Components in the host and return a list of them. 
+# Find and initialize all AME Components in the host and return a list of them.
 #
 # occ_list is a list of 2-character hexadecimal numbers (ex: 00 01 02)
-proc ame::init_ameocc_objects {host {rssa {20}} {occ_list {00}}} {       
+proc ame::init_ameocc_objects {host {rssa {20}} {occ_list {00}}} {
     ::amesterdebug::debug ame ">>ame::init_ameocc_objects"
     set min_ame_api_major 2
     set min_ame_api_minor 8
 
     # Update this when supported API level changes
     set max_ame_api_major 2
-    set max_ame_api_minor 28   
+    set max_ame_api_minor 28
 
     set ameclist ""
     set ameapimajor 0
@@ -197,15 +197,15 @@ proc ame::init_ameocc_objects {host {rssa {20}} {occ_list {00}}} {
 
     set i 0
     ::amesterdebug::debug ame "ame::init_ameocc_objects rssa=$rssa"
-    
+
     foreach occ $occ_list {
-	::amesterdebug::debug ame "ame::initame_objects trying addr=$rssa, occ=$occ"
+	::amesterdebug::debug ame "ame::init_ame_objects trying addr=$rssa, occ=$occ"
 	set amefw {}
 	set ameapimajor 0
-	set ameapiminor 0   
+	set ameapiminor 0
 	set node_number [expr $rssa - 20]
-    	
-	##     
+
+	##
 	## Get AME API version from host at specific address
 	## Note: For P8 systems, the request data with netfn of 3a and cmd of 3c/3b must specify OCC number in the first byte of data field
 	##
@@ -225,12 +225,12 @@ proc ame::init_ameocc_objects {host {rssa {20}} {occ_list {00}}} {
 		binary scan $databytes "cc" ameapimajor ameapiminor
 	    }
 	}
-	
+
 	if {$ameapimajor == 0} {
         puts "Could not detect AME firmware on host=$host addr=$rssa occ=$occ occlist=$occ_list"
 	    return
 	}
-    
+
 	if {[catch {
 
 	    # NOTE: default case takes care of exact match, too high,
@@ -238,10 +238,10 @@ proc ame::init_ameocc_objects {host {rssa {20}} {occ_list {00}}} {
 	    # missing API levels.
 
 	    switch "${ameapimajor}.${ameapiminor}" {
-		
-		2.26 {	            
+
+		2.26 {
             set amefw [ame_${ameapimajor}_${ameapiminor} ::${host}_node${node_number}_ame${i} $host -rssa $rssa -lun $occ -node $node_number]
-        }                
+        }
 		default {
 		    if {$ameapimajor < $min_ame_api_major || ($ameapimajor==$min_ame_api_major && $ameapiminor < $min_ame_api_minor)} {
 			puts "This version of $::amesterinit::toolname does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Skipping $host"
@@ -249,15 +249,15 @@ proc ame::init_ameocc_objects {host {rssa {20}} {occ_list {00}}} {
             } elseif {$ameapimajor > $max_ame_api_major || ($ameapimajor==$max_ame_api_major && $ameapiminor > $max_ame_api_minor)} {
 			puts "This version of $::amesterinit::toolname does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Will try to use previous version ${max_ame_api_major}.${max_ame_api_minor} for $host"
 			::amesterdebug::debug 1 "This version of $::amesterinit::toolname does not support AME Firmware API ${ameapimajor}.${ameapiminor}.  Will try to use previous version ${max_ame_api_major}.${max_ame_api_minor} for $host"
-            set amefw [ame_${max_ame_api_major}_${max_ame_api_minor} ::${host}_node${node_number}_ame${i} $host -rssa $rssa -lun $occ -node $node_number]                       
+            set amefw [ame_${max_ame_api_major}_${max_ame_api_minor} ::${host}_node${node_number}_ame${i} $host -rssa $rssa -lun $occ -node $node_number]
 		    } else {
 			# We must exactly match a known API level
 			set amefw [ame_${ameapimajor}_${ameapiminor} ::${host}_node${node_number}_ame${i} $host -rssa $rssa -lun $occ -node $node_number]
 		    }
 		}
-		
+
 	    }
-	} result]} { 
+	} result]} {
 	    bgerror "Can't connect to AME firmware with API ${ameapimajor}.${ameapiminor} for host=${host} node=${node_number} occ=${occ}"
 	    return -code error "Can't connect to AME firmware with API ${ameapimajor}.${ameapiminor} for host=${host} node=${node_number} occ=${occ}"
 
@@ -273,7 +273,7 @@ proc ame::init_ameocc_objects {host {rssa {20}} {occ_list {00}}} {
 	    }
 
 	}
-	
+
 	incr i
     }
     return $ameclist
@@ -289,13 +289,13 @@ body ame::cmd {netfn cmd args} {
 }
 
 body ame::send_sync {netfn cmd data {priority 1}} {
-    $host ipmi_send_sync $rssa 00 $lun $netfn $cmd $data $priority    
+    $host ipmi_send_sync $rssa 00 $lun $netfn $cmd $data $priority
 }
 
 body ame::send_sync_cache {netfn cmd data {priority 1} {tag ""}} {
-    $host ipmi_send_sync_cache $rssa 00 $lun $netfn $cmd $data $priority $tag    
+    $host ipmi_send_sync_cache $rssa 00 $lun $netfn $cmd $data $priority $tag
 }
 
 body ame::send {netfn cmd data callback {priority 1}} {
-    $host ipmi_send $rssa 00 $lun $netfn $cmd $data $callback $priority 
+    $host ipmi_send $rssa 00 $lun $netfn $cmd $data $callback $priority
 }

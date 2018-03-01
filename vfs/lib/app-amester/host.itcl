@@ -38,7 +38,7 @@ class host {
     public variable addr "none" {
 	if {$addr ne "none"} {
 	    if {$::options(gui)} {
-		set powerscope [::amescope::open_network $this]	
+		set powerscope [::amescope::open_network $this]
 	    }
 	}
     }
@@ -66,7 +66,7 @@ class host {
     public method net_send_msg {msg {tag {}} {callback {}} {priority 1} {timeout {10000}} {position end}}
     protected method check_socket_status {}
 
-    protected method send {type cmd databytes {callback {}} {priority 1}} 
+    protected method send {type cmd databytes {callback {}} {priority 1}}
     protected method send_sync {type cmd databytes {priority 1}}
     protected method send_sync_callback {uid status databytes}
 
@@ -75,10 +75,6 @@ class host {
     public method ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""}}
     public method ipmi_send {rssa chan lun netfn cmd data callbck {priority 1}}
 
-    public method poweroffhard {}
-    public method poweron {}
-    public method powercycle {}
-    public method poweroffsoft {}
 
     #Sensors
     protected variable data_ipmimsgcount {}
@@ -142,27 +138,20 @@ class host {
 	if {[catch {set data_ipmiprocesslatency [data ::${name}_ipmiprocesslatency -u_value "ms" -title "Process latency"]} result]} {
 	    bgerror "can't make ipmiprocesslatency sensor for $this: $result"
 	}
-	
+
 
 	# GUI
 	if {$::options(gui)} {
-	    # Function menu	    
+	    # Function menu
 	    host_window_add $name menu [frame .host.c.f.${name}_menu -relief raised -bd 2]
 	    menubutton .host.c.f.${name}_menu.functions -text Functions -menu .host.c.f.${name}_menu.functions.m
 	    pack .host.c.f.${name}_menu.functions -side left
 	    menu .host.c.f.${name}_menu.functions.m
 
-	    # Power menu
-	    .host.c.f.${name}_menu.functions.m add cascade -label "power" -menu .host.c.f.${name}_menu.functions.m._power
-	    menu .host.c.f.${name}_menu.functions.m._power
-	    .host.c.f.${name}_menu.functions.m._power add command -label "turn on" -command [code $this poweron]
-	    .host.c.f.${name}_menu.functions.m._power add command -label "soft off" -command [code $this poweroffsoft]
-	    .host.c.f.${name}_menu.functions.m._power add command -label "hard off" -command [code $this poweroffhard]
-	    .host.c.f.${name}_menu.functions.m._power add command -label "power cycle" -command [code $this powercycle]
 
 	    host_window_add_host $name
 	    host_window_add $name status [label .host.c.f.${name}_status -textvariable [scope net_status] -anchor w -font $::fixedfont] status
-	    
+
 	    # Sensor menu
 	    .host.c.f.${name}_menu.functions.m add cascade -label "network sensors" -menu .host.c.f.${name}_menu.functions.m._sensors
 	    menu .host.c.f.${name}_menu.functions.m._sensors
@@ -203,7 +192,7 @@ class host {
 	delete object $data_ipmideqlatency
 	delete object $data_ipmiprocesslatency
     }
-    
+
 }
 
 #--------------------------------------------------------------------
@@ -230,7 +219,7 @@ body host::net_health {} {
     } else {
 	return
     }
-    
+
     switch -- $net_status {
 	"disconnected" {
 	    net_open
@@ -258,7 +247,7 @@ body host::net_health {} {
 	    ::amesterdebug::debug hostnet "Error: undefined status $net_status for $name"
 	}
     }
-    
+
 }
 
 
@@ -374,12 +363,12 @@ body host::net_msg_timeout {tag} {
 	set msg $::sockcallback($sock,$tag,msg)
 	set callback $::sockcallback($sock,$tag,callback)
 	set priority $::sockcallback($sock,$tag,priority)
-	set after $::sockcallback($sock,$tag,after)    
+	set after $::sockcallback($sock,$tag,after)
 	::amesterdebug::debug hostnet "ERROR timeout $after sending message $msg to $name"
     }
 
     net_close
-    return    
+    return
 }
 
 
@@ -394,7 +383,7 @@ body host::net_write_msg {} {
     if {![llength $msgq]} {
 	::amesterdebug::debug hostnet "net_write_msg: nothing in msgq"
 	return
-    }    
+    }
     if {$net_status ne "connected"} {
 	::amesterdebug::debug hostnet "net_write_msg: not connected ($net_status)"
 	return
@@ -404,7 +393,7 @@ body host::net_write_msg {} {
     # note: messages of the same priority remain in the same order.
     #   Therefore, inserting into the front or end of the msgq will add the
     #   message at the beginning or end of messages with the same priority.
-    # 
+    #
     set msgq [lsort -integer -index 0 $msgq]
 
     set item [lindex $msgq 0]
@@ -440,7 +429,7 @@ body host::net_write_msg {} {
     #remove from outgoing message queue
     set msgq [lreplace $msgq 0 0]
     #::amesterdebug::debug hostnet "sending $::sockinfo($sock,name): $msg"
-    
+
     if {[eof $sock] || [catch {puts $sock [list $tag $msg]} result]} {
 	net_close
 	::amesterdebug::debug hostnet "$this we closed $name while in net_write_msg (msg=$msg) result=$result"
@@ -493,7 +482,7 @@ body host::net_send_msg {msg {tag {}} {callback {}} {priority 1} {timeout {10000
 
 #
 # This procedure is called when a server sends a message to amester
-# 
+#
 # The message is a list:
 # 1st word: the name of the command to which it is responding
 # remaining words: the response
@@ -513,12 +502,12 @@ body host::net_process_msg {} {
 	::amesterdebug::debug hostnet "host closed $name"
 	net_close
 	return
-    } 
+    }
 
     if {!$::network} {return}
 
     ::amesterdebug::debug hostnet "msg from $name: $line"
-    
+
     set tag [lindex $line 0]
     set reply [lindex $line 1]
     ::amesterdebug::debug hostnet "net_process_msg: tag=$tag reply=$reply"
@@ -531,7 +520,7 @@ body host::net_process_msg {} {
 	::amesterdebug::debug 1 "ERROR: No message for this ameutil reply sock=$sock name=$name reply=$reply tag=$tag line=$line"
 	return
     } else {
-    
+
 	set msg $::sockcallback($sock,$tag,msg)
 	set callback $::sockcallback($sock,$tag,callback)
 	set timeout $::sockcallback($sock,$tag,timeout)
@@ -570,7 +559,7 @@ body host::ipmicmd {addr netfn lun cmd args} {
 	[string length $cmd] != 2} {
 	return -code error "Each parameter must have an even number of hexadecimal digits"
     }
-    
+
     set chan 00
     set data {}
     foreach p $args {
@@ -599,32 +588,6 @@ body host::ipmi_send {rssa chan lun netfn cmd data callbck {priority 1}} {
 }
 
 
-body host::poweroffhard {} {
-    set results [ipmi_send_sync 20 00 00 00 02 [binary format "H*" 00]]
-    set rc [lindex $results 0]
-    if {$rc} {puts "Error during hard power off"}
-    return $rc
-}
-body host::poweron {} {
-    set results [ipmi_send_sync 20 00 00 00 02 [binary format "H*" 01]]
-    set rc [lindex $results 0]
-    if {$rc} {puts "Error during power on"}
-    return $rc
-}
-body host::powercycle {} {
-    set results [ipmi_send_sync 20 00 00 00 02 [binary format "H*" 02]]
-    set rc [lindex $results 0]
-    if {$rc} {puts "Error during power cycle"}
-    return $rc
-}
-body host::poweroffsoft {} {
-    set results [ipmi_send_sync 20 00 00 00 02 [binary format "H*" 05]]
-    set rc [lindex $results 0]
-    if {$rc} {puts "Error during soft power off"}
-    return $rc
-}
-
-
 body host::data_update {} {
     ::amesterdebug::debug host "$this data_update"
     after cancel $data_update_after
@@ -648,5 +611,5 @@ body host::data_update {} {
     set now [$data_ipmibytestx cget -value_acc]
     $data_ipmibwtx add_data [expr 1000*($now - $data_last_bytestx)/double($data_update_period)]
     set data_last_bytestx $now
-    
+
 }

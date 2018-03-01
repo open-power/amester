@@ -9,10 +9,10 @@ namespace eval amesterinit {
     variable msgn 0
 
     variable amester_ver_major 7
-    variable amester_ver_minor 1
-    variable amester_ver_year "2017"
-    variable amester_ver_month "8"
-    variable amester_ver_day "29"
+    variable amester_ver_minor 2
+    variable amester_ver_year "2018"
+    variable amester_ver_month "2"
+    variable amester_ver_day "22"
     variable amester_ver_string "${amester_ver_major}.${amester_ver_minor} ${amester_ver_year}-${amester_ver_month}-${amester_ver_day}"
 
     variable topdir
