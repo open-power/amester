@@ -3,20 +3,45 @@
 Automated Measurement of Systems for Temperature and Energy Reporting
 README
 
-Version 7.2
-Release 2017-08-29
+########################################################################################
+Connect to...
+  POWER system fsp...       NOTE: FSP based Enterprise systems
+    NOTE: need generated security keys to connect.
+    P8  Tuleta
+        Alpine
+        Brazos (Multi Node)
+    P9  ZZ
 
-Update to add support P9 openBMC systems using HTTP:REST.
 
-Version 7.1
-Release 2017-08-29
+  OpenPOWER...              NOTE: BMC IPMI interface
+    P8  Garrison  (AMI BMC)
+        Firestone (AMI BMC)
+        Palmetto  (AMI BMC)
+        Habanero  (AMI BMC)
+        Briggs    (Supermicro BMC)
+        Stratton  (Supermicro BMC)
+    P9  Boston    (Supermicro BMC)
 
-Update to work with P9 BMC/FSP systems using IPMI.
 
+  Open BMC...               NOTE: REST interface
+    https://github.com/openbmc/openbmc
+    P9  Romulus
+        Witherspoon
+        Zauis
 
-Version 7.0
-Release 2016-04-01
+        NOTE: need OpenBMC version ibm-v2.0-0-r41 or newer for performance improvement.
+              https://github.com/openbmc/openbmc
+              OpenBMC version : ibm-v2.0-0-r41 or newer.
 
+        NOTE: need OCC version for performance improvements.
+              https://github.com/open-power/occ
+              master commit : c44bd0f660c708c3e2b2cd7588c56e7c9c92e50c
+              Support set data length command to improve AMESTER performance with O…
+
+              op910 commit:  c784d70c98e1cb745215f9e879e29b0bc6faf4e6
+              op910 pnor version OP9_v1.19_1.146 or higher
+
+########################################################################################
 Automated Measurement of Systems for Temperature and Energy Reporting
 is a software tool to remotely collect power, temperature, fan speed,
 and performance data from IBM servers and control power management
@@ -31,7 +56,6 @@ scripts in the popular TCL language to automate the operation modes of
 the server and collection of data. The tool can attach to multiple
 servers simultaneously to enable cluster-level power management
 studies.
-
 
 ---------------------
 Installation on Linux
@@ -56,6 +80,12 @@ to see the manual.
 
 ------------------
 Changes to Automated Measurement of Systems for Temperature and Energy Reporting
+
+Changes in version 7.2  2018-03-01
+-- Update to add support P9 openBMC systems using HTTP:REST.
+
+Changes in Version 7.1  2017-08-29
+-- Update to work with P9 BMC/FSP systems using IPMI/NETC.
 
 Changes in version 7.0  2016-04-01
 -- Prepare for open source release.
