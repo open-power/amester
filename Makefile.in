@@ -4,7 +4,7 @@
 
 #Note: version numbers should be kept consistent with pkgIndex.tcl, amester.tcl, README.txt
 MAJOR_VERSION := 7
-MINOR_VERSION := 1
+MINOR_VERSION := 3
 RELEASE_DIR := build/v$(MAJOR_VERSION)_$(MINOR_VERSION)
 
 KBSKIT_LINUX := kbsmk8.6-bi
