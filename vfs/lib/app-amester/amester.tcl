@@ -558,7 +558,7 @@ Sheldon Bailey <baileysh@us.ibm.com>
 
 Version $amesterinit::amester_ver_string
 
-(C) Copyright IBM Corporation 2011, 2017
+(C) Copyright IBM Corporation 2011, 2019
 "  -justify left
 	pack .about.label
     }

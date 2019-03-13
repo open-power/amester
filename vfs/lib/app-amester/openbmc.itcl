@@ -257,12 +257,22 @@ body openbmc::find_occ_instance {} {
     ::amesterdebug::debug openbmc "HTTP CMD data= [http::data $token]\n"
 
     set SearchOccNumber 0
+    set OccFound 0
     foreach LineValue $DictData {
+        puts "STRING --->$LineValue"
         if {[string equal $LineValue "/org/open_power/control/occ$SearchOccNumber"]} {
-            lappend _occlist [format "%02x" $SearchOccNumber]
-            incr SearchOccNumber
+            set OccFound 1
+        } elseif {$OccFound == 1} {
+            set OccFound 0
+            if {[string first "OccActive true" $LineValue] != -1} {
+                lappend _occlist [format "%02x" $SearchOccNumber]
+                incr SearchOccNumber
+            }
+        } else {
+            set OccFound 0
         }
     }
+
 
     #OpenBMC REST send CMD to OCC to return upto 4Kbytes of data.
     set queryURL "$systemURL/org/open_power/control/occ0/action/Send"
