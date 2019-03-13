@@ -259,7 +259,6 @@ body openbmc::find_occ_instance {} {
     set SearchOccNumber 0
     set OccFound 0
     foreach LineValue $DictData {
-        puts "STRING --->$LineValue"
         if {[string equal $LineValue "/org/open_power/control/occ$SearchOccNumber"]} {
             set OccFound 1
         } elseif {$OccFound == 1} {
