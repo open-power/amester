@@ -22,7 +22,7 @@
 package require tls
 
 if {$::options(gui)} {
-    .mbar.file.menu.connect add command -label "POWER system FSP..." -command "netcconnect \#auto"
+    .mbar.file.menu.connect add command -label "POWER system FSP (IPMI w/key)" -command "netcconnect \#auto"
 }
 
 class netcconnect {

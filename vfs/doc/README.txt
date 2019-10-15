@@ -81,6 +81,9 @@ to see the manual.
 ------------------
 Changes to Automated Measurement of Systems for Temperature and Energy Reporting
 
+Changes in version 7.4  2019-10-15
+-- Update to support P9 openBMC 2nd REST stack.
+
 Changes in version 7.3  2019-03-12
 -- Update to support P9 openBMC systems with Deconfigured Processor.
 

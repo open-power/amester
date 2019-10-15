@@ -13,15 +13,15 @@
 
 
 if {$::options(gui)} {
-    .mbar.file.menu.connect add command -label "Open BMC (Older REST TOKEN)" -command "openbmcconnect \#auto"
+    .mbar.file.menu.connect add command -label "Open BMC (NEW REST) A1" -command "openbmcconnect2 \#auto"
 }
 
 package require http
+package require base64
 package require json
 package require tls
 
-
-class openbmcconnect {
+class openbmcconnect2 {
     public variable name "myopenbmc"
     public variable ipmi_user ""
     public variable ipmi_passwd ""
@@ -45,7 +45,7 @@ class openbmcconnect {
 
 }
 
-body openbmcconnect::make_gui {} {
+body openbmcconnect2::make_gui {} {
     if {[winfo exists $window]} {
     	focus $window
     	raise $window
@@ -53,7 +53,7 @@ body openbmcconnect::make_gui {} {
     	return
     }
 
-    regsub -all "::" .openbmcconnect_$this "" window
+    regsub -all "::" .openbmcconnect2_$this "" window
 
     toplevel $window
     wm title $window "Connect to Open BMC system"
@@ -82,15 +82,15 @@ body openbmcconnect::make_gui {} {
     grid $window.connect -row 8 -sticky news
 }
 
-body openbmcconnect::connect {} {
+body openbmcconnect2::connect {} {
     set obj ""
     set result ""
     catch {$window.connect configure -state disabled}
-    if {[catch {set obj [openbmc ::$name -addr $addr -ipmi_user $ipmi_user -ipmi_passwd $ipmi_passwd  -timeout $timeout]} result]} {
+    if {[catch {set obj [openbmc2 ::$name -addr $addr -ipmi_user $ipmi_user -ipmi_passwd $ipmi_passwd  -timeout $timeout]} result]} {
 	    puts "There was an error connecting: result = $result"
 	    bgerror $result
     } else {
-    	if {![$obj isa openbmc]} {
+    	if {![$obj isa openbmc2]} {
     	    puts "There was an error connecting: obj= $obj"
     	} elseif {$close} {
             delete object $this
@@ -100,7 +100,7 @@ body openbmcconnect::connect {} {
 }
 
 
-class openbmc {
+class openbmc2 {
     inherit host
 
     #Required configuration parameters
@@ -139,13 +139,13 @@ class openbmc {
             return -code error "Missing a required parameter, -ipmi_passwd <password>"
         }
 
-        openbmc_open
+        openbmc2_open
 
         if {$::options(gui)} {make_gui}
 
-        # Get basic openbmc info (Number of processors, VPD, etc.)
+        # Get basic openbmc2 info (Number of processors, VPD, etc.)
         if {[catch {init} initresult]} {
-            return -code error "Can't initialize openbmc object: $initresult"
+            return -code error "Can't initialize openbmc2 object: $initresult"
         }
 
         if {$::options(gui)} {host_window_update a b c}
@@ -154,10 +154,10 @@ class openbmc {
 
     destructor {
     	::amesterdebug::debug destructor "($this) destructor"
-    	#FIXME: delete GUI associated with openbmc
+    	#FIXME: delete GUI associated with openbmc2
     	#FIXME: delete all callbacks (bc holds them...)
 
-    	openbmc_close
+    	openbmc2_close
 
     	# Cancel any pending afters
     	after cancel $ipmi_health_after
@@ -166,7 +166,7 @@ class openbmc {
     	}
     }
 
-    # Get basic info on openbmc (initialization)
+    # Get basic info on openbmc2 (initialization)
     public method init {}
 
     # Helper that returns the available OCC endpoints on this node
@@ -199,20 +199,20 @@ class openbmc {
     public variable timeout 120000
     protected method ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {to {}} {position end}}
     protected method ipmi_dequeue {}
-    public method openbmc_process {token}
-    public method openbmc_process_packet {packet}
+    public method openbmc2_process {token}
+    public method openbmc2_process_packet {packet}
     protected method ipmi_health {}
     public variable ipmi_health_period 10000 {ipmi_health}
     protected variable ipmi_health_after 0
 
-    public variable openbmc_status "disconnected"
-    public variable openbmc_sock 0
-    #public variable openbmc_port 3623
-    public variable openbmc_open_after 0
-    public method openbmc_open {}
-    public method openbmc_close {}
-    public method openbmc_timeout {}
-    protected method openbmc_send {tag rssa chan lun netfn cmd data}
+    public variable openbmc2_status "disconnected"
+    public variable openbmc2_sock 0
+    #public variable openbmc2_port 3623
+    public variable openbmc2_open_after 0
+    public method openbmc2_open {}
+    public method openbmc2_close {}
+    public method openbmc2_timeout {}
+    protected method openbmc2_send {tag rssa chan lun netfn cmd data}
 
     #AME
     #List of AME Components on host
@@ -236,25 +236,24 @@ class openbmc {
 # listed in the IPMI FRU inventory.
 #
 # A hack to use ipmitool to find OCC instances, since the
-# FRU data is very hard to get (many IPMI commands) on openbmc.
+# FRU data is very hard to get (many IPMI commands) on openbmc2.
 # Try "ipmitool -vv ... fru list" to see the long sequence of commands.
 #
 # Note: Habanero system numbers CPUs from 0 while Garrison
 # and Firestone numbers CPUs at 1. Therefore, the CPU number
 # cannot be directly used as the OCC routing byte.
 #
-body openbmc::find_occ_instance {} {
-
+body openbmc2::find_occ_instance {} {
     # Get OCC Strings and validate at ACTIVE STATE.
     set queryURL "$systemURL/org/open_power/control/enumerate"
-    set token [http::geturl $queryURL -headers $TokenHeader  ]
+    set token [http::geturl $queryURL -headers $TokenHeader -keepalive 1 ]
 
     set responseBody [http::data $token]
     set dict_data [json::json2dict $responseBody]
     set DictData [dict get $dict_data data]
 
-    ::amesterdebug::debug openbmc "HTTP CMD status= [http::status $token]"
-    ::amesterdebug::debug openbmc "HTTP CMD data= [http::data $token]\n"
+    ::amesterdebug::debug openbmc2 "HTTP CMD status= [http::status $token]"
+    ::amesterdebug::debug openbmc2 "HTTP CMD data= [http::data $token]\n"
 
     set SearchOccNumber 0
     set OccFound 0
@@ -272,8 +271,8 @@ body openbmc::find_occ_instance {} {
         }
     }
 
-
-    #OpenBMC REST send CMD to OCC to return upto 4Kbytes of data.
+    #NOTE: Currently hard coded to only occ0
+    #REST send CMD to OCC to SET return data at 4090.
     set queryURL "$systemURL/org/open_power/control/occ0/action/Send"
     set PssThruData "{\"data\": \[ \[65,0,5,60,0,253,15,250] ] }"
     set token [http::geturl $queryURL -headers $TokenHeader -query $PssThruData]
@@ -289,27 +288,25 @@ body openbmc::find_occ_instance {} {
     if {$l_status == "0" && $postStat == "ok"} {
         set l_status2 [expr [lrange $DictData 4 4]]
         if {$l_status2 == "0"} {
-            set G_CountDown 11
+            set G_CountDown 00
         } else {
             set G_CountDown 75
         }
     }
 
-
     return $_occlist
 }
 
-body openbmc::init {} {
+body openbmc2::init {} {
     ipmi_health
 
-
     #The _possible_nodes list is hexidecimal rsaddr values in string format for all nodes
-    #Presently, openbmc supports a single node.
+    #Presently, openbmc2 supports a single node.
     set _possible_nodes [list 20]
     set fwlist {}
     foreach nodeValue $_possible_nodes {
     	if {[catch {set occlist [find_occ_instance]} result]} {
-    	    ::amesterdebug::debug openbmc "($this) Failed to get occlist for node.  Skipping node $nodeValue. result=$result"
+    	    ::amesterdebug::debug openbmc2 "($this) Failed to get occlist for node.  Skipping node $nodeValue. result=$result"
     	} else {
     	    if {$occlist eq {}} {
         		#Some older AMI firmware levels fail to show the OCC properly in the fru inventory.
@@ -324,25 +321,26 @@ body openbmc::init {} {
     		    add_node_gui_menu $name [expr $nodeValue - 20]
     	    }
     	    set ameclist [concat $ameclist [ame::init_ameocc_objects $name $nodeValue $occlist]]
-            ::amesterdebug::debug openbmc "List of available OCCs:$occlist"
+
+            ::amesterdebug::debug openbmc2 "List of available OCCs:$occlist"
     	}
     }
-    ::amesterdebug::debug openbmc "List of available nodes:$fwlist"
+    ::amesterdebug::debug openbmc2 "List of available nodes:$fwlist"
 }
 
 
 
-body openbmc::get {what args} {
+body openbmc2::get {what args} {
     switch $what {
 	ameclist {return $ameclist}
 	amec {return [lindex $ameclist 0]}
-	openbmc_status {return $openbmc_status}
+	openbmc2_status {return $openbmc2_status}
 	default {return -code error "unknown command for amec: $what $args"}
     }
 }
 
-body openbmc::make_gui {} {
-    ::amesterdebug::debug gui "openbmc_make_host_window $name"
+body openbmc2::make_gui {} {
+    ::amesterdebug::debug gui "openbmc2_make_host_window $name"
 
     # Add all sensor labels
     # These are the stats that are created as labels
@@ -360,25 +358,25 @@ body openbmc::make_gui {} {
 
 
 #
-# openbmc Communication
+# openbmc2 Communication
 #
 
 
 # ipmi_send_sync
 #
-# This is a command to send an ipmi cmd to a openbmc.
+# This is a command to send an ipmi cmd to a openbmc2.
 # This command waits for a response, prints it, then returns.
-body openbmc::ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}} {
+body openbmc2::ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}} {
     set myuid [uid_create]
 
-    if {[::amesterdebug::set openbmc]} {
+    if {[::amesterdebug::set openbmc2]} {
         binary scan $data "H*" all
-        ::amesterdebug::debug openbmc "($this) ipmi_send_sync: cmd=$cmd data=$all "
+        ::amesterdebug::debug openbmc2 "($this) ipmi_send_sync: cmd=$cmd data=$all "
     }
 
     set callback "$this ipmi_send_sync_callback $myuid \$status \$databytes"
     ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
-    # The "exists" check below is required since openbmc can fake some responses and
+    # The "exists" check below is required since openbmc2 can fake some responses and
     # set the vwait variable sooner than we can check it!
 
     if {![info exists ::wait_send_sync($myuid)]} {
@@ -396,15 +394,15 @@ body openbmc::ipmi_send_sync {rssa chan lun netfn cmd data {priority 1}} {
 }
 
 
-body openbmc::ipmi_send_sync_callback {myuid status databytes} {
+body openbmc2::ipmi_send_sync_callback {myuid status databytes} {
     set wait_send_sync_status($myuid) $status
     set wait_send_sync_databytes($myuid) $databytes
     set ::wait_send_sync($myuid) 1
     #::amesterdebug::debug ipmi ">>($this) ipmi_send_sync_callback"
 }
 
-body openbmc::ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""} } {
-    if {[::amesterdebug::set openbmc]} {
+body openbmc2::ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {tag ""} } {
+    if {[::amesterdebug::set openbmc2]} {
         binary scan $data "H*" all
         ::amesterdebug::debug ipmi "($this) ipmi_send_sync_cache: cmd=$cmd data=$all "
     }
@@ -417,7 +415,7 @@ body openbmc::ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {t
 	set ipmi_cache($index) [ipmi_send_sync $rssa $chan $lun $netfn $cmd $data $priority ]
     } else {
     	#Print any debugging for results returned from cache
-    	if {[::amesterdebug::set openbmc]} {
+    	if {[::amesterdebug::set openbmc2]} {
     	    binary scan $data "H*" all
     	    ::amesterdebug::debug ipmi "IPMI cache query ($this): rssa=$rssa chan=$chan lun=$lun netfn=$netfn cmd=$cmd data_len=[string length $data] data=$all"
     	    set status [lindex $ipmi_cache($index) 0]
@@ -430,14 +428,14 @@ body openbmc::ipmi_send_sync_cache {rssa chan lun netfn cmd data {priority 1} {t
 }
 
 
-body openbmc::ipmi_send {rssa chan lun netfn cmd data callback priority} {
+body openbmc2::ipmi_send {rssa chan lun netfn cmd data callback priority} {
     ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority
 }
 
 # based on bc::net_send_msg
 #
 #
-body openbmc::ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {to {}} {position end}} {
+body openbmc2::ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {to {}} {position end}} {
     #Do we still need tags?
     set tag 0
 
@@ -464,8 +462,8 @@ body openbmc::ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1
 # This function checks if 1) we are ready to send out a message to the host
 # and 2) there is a message waiting to be sent. If so, send it.
 # If not, just return.
-body openbmc::ipmi_dequeue {} {
-    ::amesterdebug::debug openbmc "($this) ipmi_dequeue"
+body openbmc2::ipmi_dequeue {} {
+    ::amesterdebug::debug openbmc2 "($this) ipmi_dequeue"
     # Do not start new requests if network traffic is paused
     if {!$::network} {return}
     # Do nothing if we are waiting on a response from host.
@@ -475,8 +473,8 @@ body openbmc::ipmi_dequeue {} {
 	return
     }
     # Do nothing if network is not connected. Health monitor with reconnect.
-    if {$openbmc_status ne "connected"} {
-	    ::amesterdebug::debug openbmc "ipmi_dequeue: not connected ($openbmc_status)"
+    if {$openbmc2_status ne "connected"} {
+	    ::amesterdebug::debug openbmc2 "ipmi_dequeue: not connected ($openbmc2_status)"
 	    return
     }
 
@@ -493,11 +491,11 @@ body openbmc::ipmi_dequeue {} {
     set data [lindex $item 9]
 
     if {[info exists inprogress($tag,tag)]} {
-    	::amesterdebug::debug openbmc "Message for $tag pending with same tag. ${netfn}${cmd}${data}"
+    	::amesterdebug::debug openbmc2 "Message for $tag pending with same tag. ${netfn}${cmd}${data}"
     	return
     }
 
-    #::amesterdebug::debug openbmc "dequeue: tag=$tag msg=${netfn}${cmd}${data}"
+    #::amesterdebug::debug openbmc2 "dequeue: tag=$tag msg=${netfn}${cmd}${data}"
     set inprogress($tag,tag) $tag
     set inprogress($tag,priority) $priority
     set inprogress($tag,callback) $callback
@@ -513,25 +511,25 @@ body openbmc::ipmi_dequeue {} {
     set ipmi_msgq [lreplace $ipmi_msgq 0 0]
 
     if {$to != 0} {
-	set inprogress($tag,after) [after $to [code $this openbmc_timeout]]
+	set inprogress($tag,after) [after $to [code $this openbmc2_timeout]]
 	#::amesterdebug::debug after "after set $inprogress($tag,after) for $this"
     }
 
-    openbmc_send $tag $rssa $chan $lun $netfn $cmd $data
+    openbmc2_send $tag $rssa $chan $lun $netfn $cmd $data
 
     ${name}_ipmimsgcount add_data 1
 }
 
 
-body openbmc::openbmc_send {tag rssa chan lun netfn cmd data} {
+body openbmc2::openbmc2_send {tag rssa chan lun netfn cmd data} {
     set len [string length $data]
     set l_Stop [ expr $len - "1"]
     set l_len [ expr $len + "2"]
 
-    if {[::amesterdebug::set openbmc]} {
+    if {[::amesterdebug::set openbmc2]} {
 	    binary scan $data "H*" all
-	    ::amesterdebug::debug openbmc "($this) : openbmc_send : HTTP openbmc_send netfn=$netfn cmd=$cmd data=$all"
-	    ::amesterdebug::debug openbmc "($this) :                                     data length = $l_len bytes"
+	    ::amesterdebug::debug openbmc2 "($this) : openbmc2_send : HTTP openbmc2_send netfn=$netfn cmd=$cmd data=$all"
+	    ::amesterdebug::debug openbmc2 "($this) :                                     data length = $l_len bytes"
     }
 
     set cmd2dec [expr 0x$cmd]
@@ -557,28 +555,27 @@ body openbmc::openbmc_send {tag rssa chan lun netfn cmd data} {
     }
 
     if { $netfn == 6 && $cmd == 1 } {
-        ::amesterdebug::debug openbmc "($this) Fake the IPMI response to get device ID"
+        ::amesterdebug::debug openbmc2 "($this) Fake the IPMI response to get device ID"
 	    set inprogress($tag,start_time_ms) [clock clicks -milliseconds]
-        openbmc_process_packet [binary format H2a* 00 "hello amester"]
+        openbmc2_process_packet [binary format H2a* 00 "hello amester"]
     } else {
         set occNum [format %d $lun]
         set queryURL "$systemURL/org/open_power/control/occ$occNum/action/Send"
         set PssThruData "{\"data\": \[ \[65,0,$l_len,$cmd2dec,0,$l_myData] ] }"
 
-        ::amesterdebug::debug openbmc "($this) : geturl : URL     : $queryURL"
-        ::amesterdebug::debug openbmc "($this) : geturl : COOKIE  : $TokenHeader"
-        ::amesterdebug::debug openbmc "($this) : geturl : HTTP    : $PssThruData"
+        ::amesterdebug::debug openbmc2 "($this) : geturl : URL      : $queryURL"
+        ::amesterdebug::debug openbmc2 "($this) : geturl : Header   : $TokenHeader"
+        ::amesterdebug::debug openbmc2 "($this) : geturl : PassData : $PssThruData"
 
         # Send message on http
-        if {[catch {set openbmc_sock [http::geturl $queryURL -headers $TokenHeader -query $PssThruData -command [ list $this openbmc_process]]} result]} {
-            puts "($this) openbmc_send error: failed socket write:  $result"
-            ::amesterdebug::debug openbmc "($this) openbmc_send error: failed socket write:  $result"
+        if {[catch {set openbmc2_sock [http::geturl $queryURL -headers $TokenHeader -query $PssThruData -command [ list $this openbmc2_process]]} result]} {
+            ::amesterdebug::debug openbmc2 "($this) openbmc2_send error: failed socket write:  $result"
     	} else {
     	    # Success. Record number of bytes transmitted
     	    ${name}_ipmibytestx add_data $l_len
     	}
 
-        ::amesterdebug::debug openbmc "($this) : geturl : SEND : ################################\n\n"
+        ::amesterdebug::debug openbmc2 "($this) : geturl : SEND : ################################\n\n"
 
     	#Mark time when message is sent
     	if {$tag ne {}} {
@@ -590,8 +587,8 @@ body openbmc::openbmc_send {tag rssa chan lun netfn cmd data} {
     }
 }
 
-body openbmc::openbmc_process {token} {
-    ::amesterdebug::debug openbmc "($this) openbmc_process"
+body openbmc2::openbmc2_process {token} {
+    ::amesterdebug::debug openbmc2 "($this) openbmc2_process"
     set status ""
     set ipmi_databytes ""
     set result ""
@@ -605,8 +602,8 @@ body openbmc::openbmc_process {token} {
         puts \x1b\[H\x1b\[2J
         incr G_CountDown -1
     }
-    ::amesterdebug::debug openbmc "($this) : CALLBACK : HTTP CMD status= [http::status $token]"
-    ::amesterdebug::debug openbmc "($this) : CALLBACK : HTTP CMD data= [http::data $token]"
+    ::amesterdebug::debug openbmc2 "($this) : CALLBACK : HTTP CMD status= [http::status $token]"
+    ::amesterdebug::debug openbmc2 "($this) : CALLBACK : HTTP CMD data= [http::data $token]"
 
     upvar #0 $token state
     # Access state as a Tcl array
@@ -633,16 +630,17 @@ body openbmc::openbmc_process {token} {
         set l_databytes [binary format "H*" $ipmi_databytes]
         #CHECKSUM         bit8  $DictData end-1-end
 
-        openbmc_process_packet [binary format H2a* $l_status $l_databytes]
+        openbmc2_process_packet [binary format H2a* $l_status $l_databytes]
 
     } else {
-        ::amesterdebug::debug openbmc "($this) : CALLBACK : openbmc_process: can't read packet. result=$postStat"
+        ::amesterdebug::debug openbmc2 "($this) : CALLBACK : openbmc2_process: can't read packet. result=$postStat"
+        puts "($this) : CALLBACK : openbmc2_process: can't read packet. result=$postStat"
         return
     }
 }
 
-body openbmc::openbmc_process_packet {packet} {
-    ::amesterdebug::debug openbmc "($this) openbmc_process_packet"
+body openbmc2::openbmc2_process_packet {packet} {
+    ::amesterdebug::debug openbmc2 "($this) openbmc2_process_packet"
 
     set stop_time_ms [clock clicks -milliseconds]
     set callback ""
@@ -653,10 +651,10 @@ body openbmc::openbmc_process_packet {packet} {
     #record message latency
     if {![info exists inprogress($tag,tag)]} {
 
-        if {[::amesterdebug::set openbmc]} {
-        	::amesterdebug::debug openbmc "WARN: ($this) openbmc_process_packet received $tag, but no message was sent."
+        if {[::amesterdebug::set openbmc2]} {
+        	::amesterdebug::debug openbmc2 "WARN: ($this) openbmc2_process_packet received $tag, but no message was sent."
         	binary scan $packet "H*" all
-        	::amesterdebug::debug openbmc "      packet received: $all"
+        	::amesterdebug::debug openbmc2 "      packet received: $all"
         }
     	exit
     	return
@@ -689,11 +687,12 @@ body openbmc::openbmc_process_packet {packet} {
 	binary scan $databytes "H*" all
 
     if {$callback ne {}} {
-        ::amesterdebug::debug openbmc "($this) openbmc_process_packet callback=$callback"
+        ::amesterdebug::debug openbmc2 "($this) openbmc2_process_packet callback=$callback"
+
         if {[catch [list eval $callback] result]} {
-            ::amesterdebug::debug openbmc "($this) openbmc_process_packet error; failed executing callback $callback: $result"
+            ::amesterdebug::debug openbmc2 "($this) openbmc2_process_packet error; failed executing callback $callback: $result"
 	        binary scan $databytes "H*" all
-    	    ::amesterdebug::debug openbmc "  status=$status databytes=$all"
+    	    ::amesterdebug::debug openbmc2 "  status=$status databytes=$all"
         }
     }
 
@@ -703,22 +702,22 @@ body openbmc::openbmc_process_packet {packet} {
 
 }
 
-body openbmc::openbmc_timeout {} {
-    ::amesterdebug::debug openbmc "($this) timeout"
-    openbmc_close
-    openbmc_open
+body openbmc2::openbmc2_timeout {} {
+    ::amesterdebug::debug openbmc2 "($this) timeout"
+    openbmc2_close
+    openbmc2_open
     return
 }
 
-body openbmc::openbmc_close {} {
-    ::amesterdebug::debug openbmc "openbmc_close"
+body openbmc2::openbmc2_close {} {
+    ::amesterdebug::debug openbmc2 "openbmc2_close"
     set link "down"
-    set code [catch {close $openbmc_sock}]
-    set openbmc_status "closed"
-    if {$openbmc_sock == 0} {return}
+    set code [catch {close $openbmc2_sock}]
+    set openbmc2_status "closed"
+    if {$openbmc2_sock == 0} {return}
 
     #Delete timers
-    after cancel $openbmc_open_after
+    after cancel $openbmc2_open_after
     foreach timer [array names inprogress *,after] {
 	after cancel $inprogress($timer)
     }
@@ -746,58 +745,58 @@ body openbmc::openbmc_close {} {
 	ipmi_queue $rssa $chan $lun $netfn $cmd $data $callback $priority $to 0
     }
 
-    set openbmc_sock 0
+    set openbmc2_sock 0
 
 }
 
 
-body openbmc::openbmc_open {} {
-    ::amesterdebug::debug openbmc "openbmc_open ($this)"
+body openbmc2::openbmc2_open {} {
+    ::amesterdebug::debug openbmc2 "openbmc2_open ($this)"
     set result {}
 
     # Done if a socket already exists or is opening
-    if {$openbmc_sock != 0 || $openbmc_status eq "opening"} {
-        ::amesterdebug::debug openbmc "($this) : openbmc_open : Already open"
+    if {$openbmc2_sock != 0 || $openbmc2_status eq "opening"} {
+        ::amesterdebug::debug openbmc2 "($this) : openbmc2_open : Already open"
         return
     };
 
     set systemURL "https://$addr"
-    dict set ContentEncoding "Content-Type" "application/json"
-    set loginDATA "{\"data\": \[ \"$ipmi_user\", \"$ipmi_passwd\" ] }"
-    set queryURL "$systemURL/login"
+    set queryURL "$systemURL/org/open_power/control/enumerate"
+    set auth "Basic [base64::encode $ipmi_user:$ipmi_passwd]"
+    set TokenHeader [list Authorization $auth]
 
-    # Log onto BMC
-    if {[catch {set logintoken [http::geturl $queryURL -headers $ContentEncoding -query $loginDATA ]} result]} {
-    	::amesterdebug::debug openbmc "($this) openbmc_open : FAILED to connect : $result"
+    ::amesterdebug::debug openbmc2 "($this) HTTP URL    : $queryURL"
+    ::amesterdebug::debug openbmc2 "($this) HTTP Header : $TokenHeader"
+
+
+    if {[catch {set logintoken [http::geturl $queryURL -headers $TokenHeader -keepalive 1 ] } result]} {
+    	::amesterdebug::debug openbmc2 "($this) openbmc2_open : FAILED to connect : $result"
     	return
     }
     if {[http::status $logintoken] ne "ok"} {
-        ::amesterdebug::debug openbmc "($this) openbmc_open; failed to open HTTP: $queryURL"
+        ::amesterdebug::debug openbmc2 "($this) openbmc2_open; failed to open HTTP: $queryURL"
+        return
+    }
+    if {[http::data $logintoken] eq "Unauthorized"} {
+        ::amesterdebug::debug openbmc2 "($this) openbmc2_open; Unauthorized HTTP: $queryURL"
         return
     }
 
-    ::amesterdebug::debug openbmc "HTTP CMD status= [http::status $logintoken]"
-    ::amesterdebug::debug openbmc "HTTP CMD data= [http::data $logintoken]"
+    ::amesterdebug::debug openbmc2 "HTTP CMD status= [http::status $logintoken]"
+    ::amesterdebug::debug openbmc2 "HTTP CMD data= [http::data $logintoken]"
 
-    upvar #0 $logintoken state
-    array set metaData $state(meta)
-    set cookielist { }
-    foreach {key value} [array get metaData] {
-        if {$key eq "Set-Cookie"} {
-            lappend cookielist [lindex [split $value ";"]]
-        }
-    }
-    set TokenHeader "$ContentEncoding Cookie: [join $cookielist "; "]"
-    ::amesterdebug::debug openbmc "($this) HTTP Cookie : $TokenHeader"
+
+
     # Good style, free the memory for the last http request
     http::cleanup $logintoken
-    set openbmc_status "connected"
+
+    set openbmc2_status "connected"
     set link "up"
 }
 
 
-body openbmc::ipmi_health {} {
-    ::amesterdebug::debug openbmc "openbmc_health $name $openbmc_status"
+body openbmc2::ipmi_health {} {
+    ::amesterdebug::debug openbmc2 "openbmc2_health $name $openbmc2_status"
 
     after cancel $ipmi_health_after
 
@@ -807,39 +806,39 @@ body openbmc::ipmi_health {} {
 	       return
     }
 
-    switch -- $openbmc_status {
+    switch -- $openbmc2_status {
     	"disconnected" {
-                ::amesterdebug::debug openbmc "($this) Channel is disconnected, opening"
-    	    openbmc_open
+                ::amesterdebug::debug openbmc2 "($this) Channel is disconnected, opening"
+    	    openbmc2_open
     	}
     	"opening" {
-                ::amesterdebug::debug openbmc "($this) Channel is opening, please wait"
+                ::amesterdebug::debug openbmc2 "($this) Channel is opening, please wait"
     	}
     	"connected" {
-                ::amesterdebug::debug openbmc "($this) Channel is connected, dispatching"
+                ::amesterdebug::debug openbmc2 "($this) Channel is connected, dispatching"
     	    ipmi_dequeue
     	}
     	"timeout" {
-                ::amesterdebug::debug openbmc "($this) Channel timed out, closing"
-    	    openbmc_close
+                ::amesterdebug::debug openbmc2 "($this) Channel timed out, closing"
+    	    openbmc2_close
     	}
     	"error" {
-                ::amesterdebug::debug openbmc "($this) Channel error, closing"
-    	    openbmc_close
+                ::amesterdebug::debug openbmc2 "($this) Channel error, closing"
+    	    openbmc2_close
     	}
     	"closed" {
-                ::amesterdebug::debug openbmc "($this) Channel closed, attempting to open"
+                ::amesterdebug::debug openbmc2 "($this) Channel closed, attempting to open"
     	    # Try to re-open host
-    	    openbmc_open
+    	    openbmc2_open
     	}
     	default {
-    	    ::amesterdebug::debug openbmc "Error: undefined status $openbmc_status for $name"
+    	    ::amesterdebug::debug openbmc2 "Error: undefined status $openbmc2_status for $name"
     	}
     }
 
 }
 
-body openbmc::add_node_gui_menu {host node} {
+body openbmc2::add_node_gui_menu {host node} {
     set name ""
     regsub -all "::" $host "" name
     .host.c.f.${name}_menu.functions.m add cascade -label "${name}_node${node}" -menu .host.c.f.${name}_menu.functions.m._node${node}
