@@ -93,6 +93,9 @@ proc ame::init_ame_objects {host {rssa_list {20}}} {
 	set ameapiminor 0
 
 	# Get AME API version from host at specific address
+    ################################################################################
+    # SEND CMD : 0x0A   10   – Get AMESTER API VEersion.
+    ################################################################################
 	if {[catch {set result [$host ipmi_send_sync $addr 00 00 3a 3c [binary format "c" 10]]} errmsg]} {
 	    # API command didn't work
 	    puts "Error while determining AME firmware level on host=$host addr=$addr: $errmsg"
@@ -210,6 +213,9 @@ proc ame::init_ameocc_objects {host {rssa {20}} {occ_list {00}}} {
 	## Note: For P8 systems, the request data with netfn of 3a and cmd of 3c/3b must specify OCC number in the first byte of data field
 	##
 	## NOTE: Do not cache the "0a" command below. We need to have 1 real command get to each OCC to check health.
+    ################################################################################
+    # SEND CMD : 0x0A   10   – Get AMESTER API VEersion.
+    ################################################################################
 	if {[catch {set result [$host ipmi_send_sync $rssa 00 $occ 3a 3c [binary format "H2" 0a]]} errmsg]} {
 	    # API command didn't work
 	    puts "Error while determining AME firmware level on host=$host addr=$rssa: $errmsg"

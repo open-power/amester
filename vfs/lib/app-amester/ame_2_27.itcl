@@ -560,8 +560,10 @@ body ame_2_27::sensorstats {} {
     multiselect \#auto [scope sensor_window_stats_all] [scope sensor_window_stats] [code $this sensor_window_update]
 }
 
-# Clear min/max of all sensors
 body ame_2_27::clear_minmax_all_sync {} {
+    ################################################################################
+    # SEND CMD : 0x21   33   – Clear min/max of all sensors.
+    ################################################################################
     set result [send_sync 3a 3c [binary format "H*" 21]]
 }
 
@@ -671,6 +673,9 @@ body ame_2_27::sensor_update_by_object_sync {_sensorlist} {
 	foreach _s $_list_obj {
 	    lappend _list [$_s cget -sensornum]
 	}
+    ################################################################################
+    # SEND CMD : 0x07   07  <list> – Get Multiple Sensor data
+    ################################################################################
 	set result [send_sync 3a 3c [binary format "H2S*" "07" $_list]]
 	set _status [lindex $result 0]
 	if {$_status == 0} {
@@ -804,7 +809,11 @@ body ame_2_27::init {} {
 body ame_2_27::find_message_size {} {
     # Find return message size (not counting return code byte) by
     # requesting a test message that fills the firmware output buffer
+    ################################################################################
+    # SEND CMD : 0xff   255   – Output Buffer Size.
+    ################################################################################
     set result [send_sync_cache 3a 3c [binary format "H2" ff] $::priority_highest "$ame_version $api_version"]
+
     #Strip out data for API version (2 bytes) and process
     if {[lindex $result 0] == 0} {
 	set databytes [lindex $result 1]
@@ -823,7 +832,11 @@ body ame_2_27::find_message_size {} {
     # from command line.  This fixes OpenPOWER systems, but is a hack to put it here.
     set size [expr {$message_return_size - 2}]
     while {$size > 0} {
+    ################################################################################
+    # SEND CMD : 0xfe   254   – CHECK output buffers size by send/return.
+    ################################################################################
 	set result [send_sync_cache 3a 3c [binary format "H2a${size}" fe $databytes] $::priority_highest "$ame_version $api_version"]
+
 	#Strip out data for API version (2 bytes) and process
 	if {[lindex $result 0] == 0} {
 	    set databytes [lindex $result 1]
@@ -844,6 +857,9 @@ body ame_2_27::init_version {} {
     #Get Firmware Version
     #Get number of AME sensors
 
+    ################################################################################
+    # SEND CMD : 0x1C   28   – Get AMESTER Component Level Constants
+    ################################################################################
     set result [send_sync_cache 3a 3c [binary format "H2" 1c] $::priority_highest "$ame_version $api_version"]
 
     #Strip out data for API version (2 bytes) and process
@@ -891,6 +907,9 @@ body ame_2_27::init_sensors {} {
 
 	::amesterdebug::debug ame "  ask for sensor $i onward"
 
+    ################################################################################
+    # SEND CMD : 0x25   37   – Get Sensor Info
+    ################################################################################
 	set result [send_sync_cache 3a 3c [binary format "H*Sc" 25 $i 5] $::priority_highest "$ame_version $api_version"]
 	if {[lindex $result 0] == 0} {
 	    set j 0
@@ -1000,16 +1019,25 @@ body ame_2_27::name_callback {sensornum status databytes} {
 
     #Get sensor freq
     #set callback "[code $this freq_callback] $sensorname \$status \$databytes"
+    ################################################################################
+    # SEND CMD : 0x03   3 <ID> 1  – Get this sensor Freq.
+    ################################################################################
     set result [send_sync 3a 3c [binary format "cSc" 3 $sensornum 1]]
     freq_callback $s [lindex $result 0] [lindex $result 1]
 
     #Get sensor units
     #set callback "[code $this units_callback] $sensorname \$status \$databytes"
+    ################################################################################
+    # SEND CMD : 0x03   3 <ID> 2  – Get this sensor Units.
+    ################################################################################
     set result [send_sync 3a 3c [binary format "cSc" 3 $sensornum 2]]
     units_callback $s [lindex $result 0] [lindex $result 1]
 
     #Get sensor scale
     #set callback "[code $this scale_callback] $sensorname \$status \$databytes"
+    ################################################################################
+    # SEND CMD : 0x03   3 <ID> 3  – Get this sensor Scale.
+    ################################################################################
     set result [send_sync 3a 3c [binary format "cSc" 3 $sensornum 3]]
     scale_callback $s [lindex $result 0] [lindex $result 1]
 
@@ -1059,6 +1087,9 @@ body ame_2_27::trace_init {trace_count} {
 
 	::amesterdebug::debug trace "  ask for trace $i onward"
 
+    ################################################################################
+    # SEND CMD : 0x30   48 <num>  – Get Trace Buffer Configuration.
+    ################################################################################
 	set result [send_sync_cache 3a 3c [binary format "H*c" 30 $i] $::priority_highest "$ame_version $api_version"]
 	if {[lindex $result 0] == 0} {
 	    set j 0
@@ -1190,9 +1221,15 @@ body ame_2_27::get {what args} {
 #
 
 body ame_2_27::trace_start {} {
+    ################################################################################
+    # SEND CMD : 0x33   51   – Trace Start
+    ################################################################################
     set _result [send_sync 3a 3c [binary format "H*" "33"]]
 }
 
 body ame_2_27::trace_stop {} {
+    ################################################################################
+    # SEND CMD : 0x34   52   – TRACE STOP
+    ################################################################################
     set _result [send_sync 3a 3c [binary format "H*" "34"]]
 }

@@ -975,9 +975,9 @@ if {[catch {package require udp} result]} {
 # Load classes
 lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester sensor.itcl sensor_*.itcl]]
 lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester ame.itcl ame_*.itcl]]
-lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester bc.itcl]]
+#lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester bc.itcl]]
 lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester scope.itcl scope_*.itcl ]]
-lappend files [glob -directory $::amesterinit::topdir/lib/app-amester host.itcl blade.itcl local.itcl rmcp.itcl netc.itcl emtagent.itcl systemz.itcl tunasim.itcl openpower.itcl openbmc.itcl]
+lappend files [glob -directory $::amesterinit::topdir/lib/app-amester host.itcl local.itcl netc.itcl emtagent.itcl openpower.itcl openbmc.itcl openbmc2.itcl]
 lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester parm_*.itcl]]
 lappend files [lsort [glob -directory $::amesterinit::topdir/lib/app-amester tracebuffer.itcl tracebuffer_*.itcl ]]
 

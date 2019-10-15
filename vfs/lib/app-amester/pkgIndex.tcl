@@ -1,5 +1,5 @@
 #
-# (C) Copyright IBM Corporation 2011, 2016
+# (C) Copyright IBM Corporation 2011, 2019
 #
 
 package ifneeded app-amester 7.0 [list amesterinit::start $dir]
@@ -9,12 +9,12 @@ namespace eval amesterinit {
     variable msgn 0
 
     variable amester_ver_major 7
-    variable amester_ver_minor 3
+    variable amester_ver_minor 4
     variable amester_ver_year "2019"
-    variable amester_ver_month "3"
-    variable amester_ver_day "13"
+    variable amester_ver_month "10"
+    variable amester_ver_day "15"
     variable amester_ver_string "${amester_ver_major}.${amester_ver_minor} ${amester_ver_year}-${amester_ver_month}-${amester_ver_day}"
-
+    
     variable topdir
     variable toolname "Automated Measurement of Systems for Temperature and Energy Reporting"
 }
@@ -53,7 +53,7 @@ Version $amesterinit::amester_ver_string
 
 Sheldon Bailey <baileysh@us.ibm.com>
 
-(C) Copyright IBM Corporation 2011, 2017
+(C) Copyright IBM Corporation 2011, 2019
 "
     if {$::options(gui)} {
 	set w .splash

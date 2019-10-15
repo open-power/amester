@@ -1,5 +1,5 @@
 #
-# (C) Copyright IBM Corporation 2011, 2016
+# (C) Copyright IBM Corporation 2011, 2019
 #
 
 #--------------------------------------------------------------------
@@ -9,13 +9,13 @@
 #--------------------------------------------------------------------
 
 if {$::options(gui)} {
-    .mbar.file.menu.connect add command -label "OpenPOWER..." -command "openpowerconnect \#auto"
+    .mbar.file.menu.connect add command -label "OpenPOWER (BMC IPMI)" -command "openpowerconnect \#auto"
 }
 
 class openpowerconnect {
     public variable name "myopenpower"
-    public variable ipmi_user "ADMIN"
-    public variable ipmi_passwd "admin"
+    public variable ipmi_user ""
+    public variable ipmi_passwd ""
     public variable ipmi_ipmitool "ipmitool"
     public variable addr ""
     public variable close 1
@@ -296,7 +296,7 @@ body openpower::find_occ_instance2 {} {
 	set words [split $line]
 	foreach word $line {
         set _occnum {}
-        #SHELDON9999 : Future release remove CPU for PROCESSOR MODULE only.
+        #TODO : Future release remove CPU for PROCESSOR MODULE only.
 	    if {[scan $word "CPU %d" _procnum]} {
                 incr _proc_count
             } elseif {[scan $word "CPU%d" _procnum]} {
