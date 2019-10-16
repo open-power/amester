@@ -28,12 +28,12 @@ if {$::options(gui)} {
 class netcconnect {
     public variable name "myfsp"
     public variable addr ""
-    public variable password "FipSdev"
+    public variable password ""
     public variable close 1
     public variable window ""
     public variable port 30000
     public variable timeout 120000
-    public variable tool "dev"
+    public variable tool ""
     public variable certfile {fsp.crt}
     public variable keyfile {fsp.key}
     public variable pkpfile {fsp.pkp}

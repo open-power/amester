@@ -13,7 +13,7 @@
 
 
 if {$::options(gui)} {
-    .mbar.file.menu.connect add command -label "Open BMC (NEW REST) A1" -command "openbmcconnect2 \#auto"
+    .mbar.file.menu.connect add command -label "Open BMC (NEW REST) A3" -command "openbmcconnect2 \#auto"
 }
 
 package require http
@@ -22,7 +22,7 @@ package require json
 package require tls
 
 class openbmcconnect2 {
-    public variable name "myopenbmc"
+    public variable name "myopenbmc2"
     public variable ipmi_user ""
     public variable ipmi_passwd ""
     public variable addr ""
@@ -272,9 +272,11 @@ body openbmc2::find_occ_instance {} {
     }
 
     #NOTE: Currently hard coded to only occ0
-    #REST send CMD to OCC to SET return data at 4090.
+    #REST send CMD to OCC to SET return data at 4081.
+    # send_sync_cache 3a 3c [binary format "H2" fd] 4081
+    # 0xF 0xF1  which is 15, 241
     set queryURL "$systemURL/org/open_power/control/occ0/action/Send"
-    set PssThruData "{\"data\": \[ \[65,0,5,60,0,253,15,250] ] }"
+    set PssThruData "{\"data\": \[ \[65,0,5,60,0,253,15,241] ] }"
     set token [http::geturl $queryURL -headers $TokenHeader -query $PssThruData]
 
     #Check if CMD was ok.
@@ -438,6 +440,7 @@ body openbmc2::ipmi_send {rssa chan lun netfn cmd data callback priority} {
 body openbmc2::ipmi_queue {rssa chan lun netfn cmd data {callback {}} {priority 1} {to {}} {position end}} {
     #Do we still need tags?
     set tag 0
+
 
     if {$to eq {}} {set to $timeout}
 

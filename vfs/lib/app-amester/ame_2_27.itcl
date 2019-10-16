@@ -816,11 +816,11 @@ body ame_2_27::find_message_size {} {
 
     #Strip out data for API version (2 bytes) and process
     if {[lindex $result 0] == 0} {
-	set databytes [lindex $result 1]
-	set message_return_size [string length $databytes]
+	    set databytes [lindex $result 1]
+	    set message_return_size [string length $databytes]
         ::amesterdebug::debug ame "$this outsize = $message_return_size"
     } else {
-	return
+	    return
     }
 
     # Find send message size (everything after 3c byte) by sending
@@ -832,20 +832,22 @@ body ame_2_27::find_message_size {} {
     # from command line.  This fixes OpenPOWER systems, but is a hack to put it here.
     set size [expr {$message_return_size - 2}]
     while {$size > 0} {
-    ################################################################################
-    # SEND CMD : 0xfe   254   – CHECK output buffers size by send/return.
-    ################################################################################
-	set result [send_sync_cache 3a 3c [binary format "H2a${size}" fe $databytes] $::priority_highest "$ame_version $api_version"]
+        ################################################################################
+        # SEND CMD : 0xfe   254   – CHECK output buffers size by send/return.
+        ################################################################################
+    	set result [send_sync_cache 3a 3c [binary format "H2a${size}" fe $databytes] $::priority_highest "$ame_version $api_version"]
 
-	#Strip out data for API version (2 bytes) and process
-	if {[lindex $result 0] == 0} {
-	    set databytes [lindex $result 1]
-	    set message_size [string length $databytes]
-	    break
-	}
-    ::amesterdebug::debug ame "$this FAIL message_size=$size"
-	#Try a smaller message size
-	incr size -1
+        ::amesterdebug::debug ame "$this databyte output = $databytes"
+
+    	#Strip out data for API version (2 bytes) and process
+    	if {[lindex $result 0] == 0} {
+    	    set databytes [lindex $result 1]
+    	    set message_size [string length $databytes]
+    	    break
+    	}
+        ::amesterdebug::debug ame "$this FAIL message_size=$size"
+    	#Try a smaller message size
+    	incr size -1
     }
 
     ::amesterdebug::debug ame "$this insize = $message_size"
