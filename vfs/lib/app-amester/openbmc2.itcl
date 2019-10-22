@@ -13,7 +13,7 @@
 
 
 if {$::options(gui)} {
-    .mbar.file.menu.connect add command -label "Open BMC (NEW REST) A3" -command "openbmcconnect2 \#auto"
+    .mbar.file.menu.connect add command -label "Open BMC (OP940 & above)" -command "openbmcconnect2 \#auto"
 }
 
 package require http

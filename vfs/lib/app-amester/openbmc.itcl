@@ -13,7 +13,7 @@
 
 
 if {$::options(gui)} {
-    .mbar.file.menu.connect add command -label "Open BMC (Older REST TOKEN)" -command "openbmcconnect \#auto"
+    .mbar.file.menu.connect add command -label "Open BMC (OP930 & below)" -command "openbmcconnect \#auto"
 }
 
 package require http
