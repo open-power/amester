@@ -1,0 +1,27 @@
+This is the Process I have used external to IBM.
+
+https://support.symantec.com/en_US/article.TECH242030.html
+
+ 
+
+Step 1: Generate a Private Key 
+I used 2048 but either should work.
+
+xyz.key  NOTE: using passphrase.
+
+xyz.pkp text of the passphrase used.
+
+ 
+
+Step 2: Generate a CSR (Certificate Signing Request) 
+
+xyz.crs
+
+ 
+Step 3: Generating a Self-Signed Certificate 
+
+xyz.crt
+
+ 
+
+amester: start in same directory as Crypt files, else you have to put path in.
