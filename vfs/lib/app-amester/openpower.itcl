@@ -105,6 +105,7 @@ class openpower {
     public variable ipmi_user ""
     public variable ipmi_passwd ""
     public variable ipmi_ipmitool "ipmitool"
+    public variable ipmi_flags ""
 
     #Parameters
     protected variable vpdversion ""
@@ -157,7 +158,6 @@ class openpower {
 	# Cancel any pending afters
 	after cancel $ipmi_health_after
     }
-
     # Get basic info on openpower (initialization)
     public method init {}
 
@@ -282,7 +282,7 @@ body openpower::find_occ_instance2 {} {
     #Put spaces between each byte in data parameter
     set errorcode ""
     set result ""
-    set ipmicmd "$ipmi_ipmitool -H $addr -U $ipmi_user -P $ipmi_passwd"
+
     ::amesterdebug::debug openpower "trying |$ipmicmd fru list"
     if {[catch {
 	set f1 [open "|$ipmicmd fru list" r]
@@ -307,11 +307,11 @@ body openpower::find_occ_instance2 {} {
         }
 	}
 
+    #if { $_module_count < $_proc_count} {
     if { $_module_count < $_proc_count} {
         set _proc_count $_module_count
         ::amesterdebug::debug openpower "CPU # different than PROC MODULE use MODULE count =$ _proc_count"
     }
-
     if {[catch {close $f1} closeresult]} {
 	set n 0
 	foreach w [split $closeresult] {
@@ -853,7 +853,7 @@ body openpower::ipmi_thread_start_openipmi {} {
     #end set ithread
 
     #Setup ithread
-    set ipmicmd "$ipmi_ipmitool -H $addr -U $ipmi_user -P $ipmi_passwd"
+    set ipmicmd "$ipmi_ipmitool -H $addr -U $ipmi_user -P $ipmi_passwd $ipmi_flags"
 
     thread::send $ithread [list set obj $this]
     if {$ipmicmd ne ""} {
